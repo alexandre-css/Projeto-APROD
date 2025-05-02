@@ -686,8 +686,15 @@ class ExcelAnalyzerApp:
         import os
         from tksheet import Sheet
         
+    # Frame principal da aba
         frame_principal = ttk.Frame(self.notebook)
         self.notebook.add(frame_principal, text="Comparação de Meses")
+        frame_principal.pack(fill="both", expand=True)
+
+        # Frame principal da aba
+        frame_principal = ttk.Frame(self.notebook)
+        self.notebook.add(frame_principal, text="Comparação de Meses")
+        frame_principal.pack(fill="both", expand=True)
 
         # Listar arquivos disponíveis
         pasta = "dados_mensais"
@@ -752,30 +759,49 @@ class ExcelAnalyzerApp:
         self.kpi_comp_frame.pack(fill="x", padx=10, pady=5)
         self.kpi_comp_labels = {}
 
-        # Tabela comparativa usando tksheet em vez de Treeview
-        frame_tabela = ttk.LabelFrame(frame_principal, text="Comparação Detalhada", padding=10)
+        # Frame da tabela 
+        frame_tabela = ttk.LabelFrame(frame_principal, text="Comparação Detalhada", padding=0)
         frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Inicializa o Sheet com dados vazios (será preenchido depois)
+        frame_tabela.pack_propagate(False)  # Impede ajuste automático de tamanho
+
+        # IMPORTANTE: Usar o método grid em vez de place ou pack
+        frame_tabela.columnconfigure(0, weight=1)  # Coluna expandível
+        frame_tabela.rowconfigure(0, weight=1)     # Linha expandível
+
         self.sheet_comp_meses = Sheet(
             frame_tabela,
-            data=[[""]],  # Dados iniciais vazios
-            headers=["Usuário"],  # Cabeçalho inicial
+            data=[[""]],
+            headers=["Usuário"],
             theme="light blue",
             show_x_scrollbar=True,
-            show_y_scrollbar=True,
-            height=400  # Altura inicial
+            show_y_scrollbar=True
         )
-        self.sheet_comp_meses.pack(fill="both", expand=True)
-        
-        self.atualizar_comboboxes_comparacao()
-        self.listbox_meses.update_idletasks()
 
+        # Use grid com sticky="nsew" para ocupar todo o espaço
+        self.sheet_comp_meses.grid(row=0, column=0, sticky="nsew")
+
+        # Outros bindings permanecem iguais
+        self.sheet_comp_meses.enable_bindings((
+            "single_select", "row_select", "column_width_resize", "double_click_column_resize",
+            "arrowkeys", "right_click_popup_menu", "rc_select", "copy", "cut", "paste", "delete", "undo", "edit_cell",
+            "column_select", "column_select_drag", "column_select_toggle", "drag_select"
+        ))
+        self.sheet_comp_meses.extra_bindings([
+            ("header_left_click", self.ordenar_coluna_comparacao_meses)
+        ])
+
+
+    def ordenar_coluna_comparacao_meses(self, event):
+        col = event[1]
+        if not hasattr(self, '_ordem_crescente'):
+            self._ordem_crescente = {}
+        crescente = self._ordem_crescente.get(col, True)
+        self.sheet_comp_meses.sort_table(col, reverse=not crescente)
+        self._ordem_crescente[col] = not crescente
 
     def comparar_todos_meses(self):
         self.listbox_meses.selection_set(0, "end")
         self.comparar_meses()
-
 
     def verificar_arquivos_mensais(self):
         pasta = "dados_mensais"
@@ -921,7 +947,7 @@ class ExcelAnalyzerApp:
 
         # Ajustar largura das colunas
         self.sheet_comp_meses.set_all_column_widths(120)
-        self.sheet_comp_meses.set_column_width(0, 200)  # Coluna de usuário mais larga
+        self.sheet_comp_meses.column_width(0, 200)
 
         # Atualiza KPIs
         totais = [prod["Peso"].sum() for prod in dados_meses]
