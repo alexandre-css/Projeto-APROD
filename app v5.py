@@ -2,6 +2,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import MessageDialog
 from tkinter import filedialog, messagebox
+from tksheet import Sheet
 import pandas as pd
 import calendar
 import matplotlib.pyplot as plt
@@ -643,31 +644,25 @@ class ExcelAnalyzerApp:
             bootstyle=SUCCESS
         ).pack(side="left", padx=5)
 
-        # Frame para a tabela, configurado para expandir e preencher
         frame_tabela = ttk.LabelFrame(frame_comp, text="Comparação de Usuários", padding=10, bootstyle=ttk.INFO)
         frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        # Criando o Treeview com colunas vazias inicialmente
-        self.tree_comp = ttk.Treeview(frame_tabela, columns=("Usuário",), show="headings", bootstyle=ttk.INFO)
-        self.tree_comp.heading("Usuário", text="Usuário")
-        self.tree_comp.column("Usuário", width=200, anchor="center", stretch=True)
 
-        # Scrollbars verticais e horizontais
-        scroll_y = ttk.Scrollbar(frame_tabela, orient="vertical", command=self.tree_comp.yview)
-        scroll_y.pack(side="right", fill="y")
-        self.tree_comp.configure(yscrollcommand=scroll_y.set)
-        
-        scroll_x = ttk.Scrollbar(frame_tabela, orient="horizontal", command=self.tree_comp.xview)
-        scroll_x.pack(side="bottom", fill="x")
-        self.tree_comp.configure(xscrollcommand=scroll_x.set)
-        
-        # Pack com fill='both' e expand=True para ocupar todo espaço
-        self.tree_comp.pack(fill="both", expand=True)
-        
-        # Inicializa dicionários para checkbuttons
+        # Inicializa o Sheet (tksheet) para comparação de usuários
+        self.sheet_comp = Sheet(
+            frame_tabela,
+            data=[[""]],  # Inicialmente vazio
+            headers=["Usuário"],
+            theme="light blue",
+            show_x_scrollbar=True,
+            show_y_scrollbar=True,
+            height=400
+        )
+        self.sheet_comp.pack(fill="both", expand=True)
+
         self.check_vars_usuarios = dict()
         self.checkbuttons_usuarios = dict()
         self.atualizar_checkboxes_usuarios()
+
 
     def atualizar_comboboxes_comparacao(self):
         import os
@@ -855,17 +850,21 @@ class ExcelAnalyzerApp:
 
         todos_usuarios = sorted({usuario for prod in dados_meses for usuario in prod.index})
         colunas = ["Usuário"] + meses_selecionados + ["Total"]
-        
+
         # Preparar dados para o tksheet
         dados_tabela = []
-        celulas_verdes = []  # Lista de tuplas (linha, coluna) para células verdes
-        celulas_vermelhas = []  # Lista de tuplas (linha, coluna) para células vermelhas
-        
+        celulas_verdes = []    # flecha para cima
+        celulas_vermelhas = [] # flecha para baixo
+        celulas_top3 = []      # top 3 valores por mês
+        celulas_total = []     # coluna de total
+        celulas_zeradas = []   # valores zerados
+        linhas_alternadas = [] # linhas alternadas
+
+        # Monta tabela e marca flechas
         for idx, usuario in enumerate(todos_usuarios):
             linha = [usuario]
             valores = []
             total = 0
-            
             for i, prod in enumerate(dados_meses):
                 valor = prod.loc[usuario]["Peso"] if usuario in prod.index else 0
                 valores.append(valor)
@@ -874,46 +873,67 @@ class ExcelAnalyzerApp:
             for i, v in enumerate(valores):
                 if i == 0:
                     linha.append(f"{v:.2f}")
+                    if v == 0:
+                        celulas_zeradas.append((idx, i+1))
                 else:
                     if v > valores[i-1]:
                         linha.append(f"{v:.2f} ▲")
-                        celulas_verdes.append((idx, i+1))  # +1 porque a primeira coluna é o usuário
+                        celulas_verdes.append((idx, i+1))
                     elif v < valores[i-1]:
                         linha.append(f"{v:.2f} ▼")
-                        celulas_vermelhas.append((idx, i+1))  # +1 porque a primeira coluna é o usuário
+                        celulas_vermelhas.append((idx, i+1))
                     else:
                         linha.append(f"{v:.2f}")
-            
+                    if v == 0:
+                        celulas_zeradas.append((idx, i+1))
             linha.append(f"{total:.2f}")
             dados_tabela.append(linha)
-        
-        # Configurar o tksheet
+            celulas_total.append((idx, len(colunas)-1))
+            if idx % 2 == 0:
+                linhas_alternadas.append(idx)
+
+        # Top 3 valores de cada mês (coluna)
+        for col in range(1, len(colunas)-1):  # ignora usuário e total
+            valores_col = [(row, float(dados_tabela[row][col].split()[0])) for row in range(len(dados_tabela))]
+            top3 = sorted(valores_col, key=lambda x: x[1], reverse=True)[:3]
+            for row, _ in top3:
+                celulas_top3.append((row, col))
+
+        # Atualiza o tksheet
         self.sheet_comp_meses.headers(colunas)
         self.sheet_comp_meses.set_sheet_data(dados_tabela)
-        
-        # Aplicar cores nas células
-        for linha, coluna in celulas_verdes:
-            self.sheet_comp_meses.highlight_cells(row=linha, column=coluna, bg="lightgreen", fg="black")
-        
-        for linha, coluna in celulas_vermelhas:
-            self.sheet_comp_meses.highlight_cells(row=linha, column=coluna, bg="lightcoral", fg="black")
-        
+
+        # Coluna de total (azul claro)
+        for row, col in celulas_total:
+            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#e3f2fd", fg="#1565c0")
+
+        # Top 3 valores por mês (amarelo claro)
+        for row, col in celulas_top3:
+            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#fff9c4", fg="#795548")
+
+        # Flecha para cima (verde forte)
+        for row, col in celulas_verdes:
+            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#d0f5e8", fg="green")
+
+        # Flecha para baixo (vermelho forte)
+        for row, col in celulas_vermelhas:
+            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#ffebee", fg="red")
+
         # Ajustar largura das colunas
         self.sheet_comp_meses.set_all_column_widths(120)
         self.sheet_comp_meses.set_column_width(0, 200)  # Coluna de usuário mais larga
-        
+
         # Atualiza KPIs
         totais = [prod["Peso"].sum() for prod in dados_meses]
         for lbl in self.kpi_comp_labels.values():
             lbl.destroy()
         self.kpi_comp_labels = {}
-        
         for i, (mes, total) in enumerate(zip(meses_selecionados, totais)):
             lbl_texto = f"Total {mes}: {total:.2f}"
             lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
             lbl.pack(side="left", padx=16)
             self.kpi_comp_labels[mes] = lbl
-        
+
         if len(totais) >= 2:
             primeiro = totais[0]
             ultimo = totais[-1]
@@ -926,6 +946,7 @@ class ExcelAnalyzerApp:
             )
             lbl_variacao.pack(side="left", padx=16)
             self.kpi_comp_labels["Variação (%)"] = lbl_variacao
+
 
 
     def comparar_todos_meses(self):
@@ -967,7 +988,6 @@ class ExcelAnalyzerApp:
             messagebox.showwarning("Aviso", "Carregue os dados e garanta que há as colunas 'Usuário' e 'Agendamento'.")
             return
 
-        # Obter meses selecionados
         selecoes_meses = self.listbox_meses.curselection()
         if not selecoes_meses:
             messagebox.showwarning("Aviso", "Selecione meses na aba 'Comparação de Meses' primeiro!")
@@ -1002,45 +1022,56 @@ class ExcelAnalyzerApp:
                         else:
                             dados[usuario][mes] = 0.0
                 else:
-                    # Mostra alerta se o arquivo não tem as colunas obrigatórias
-                    messagebox.showerror(
-                        "Erro no arquivo",
-                        f"O arquivo '{arquivo}' não possui as colunas obrigatórias 'Usuário' e 'Agendamento'."
-                    )
-                    # Preenche com zero para todos os usuários neste mês
                     for usuario in usuarios_selecionados:
                         dados[usuario][mes] = 0.0
             except Exception as e:
                 print(f"Erro ao processar {arquivo}: {str(e)}")
                 continue
 
-        # Configurar colunas
+        # Monta dados e aplica flechas e cores
         colunas = ["Usuário"] + meses_selecionados + ["Total"]
-        self.tree_comp["columns"] = colunas
+        dados_tabela = []
+        celulas_verdes = []
+        celulas_vermelhas = []
 
-        for col in colunas:
-            self.tree_comp.heading(
-                col,
-                text=col,
-                command=lambda c=col: self.sort_treeview_comp(c, False)
-            )
-            self.tree_comp.column(col, anchor="center", stretch=True)
-
-        # Limpar dados antigos
-        self.tree_comp.delete(*self.tree_comp.get_children())
-
-        # Inserir dados
-        for usuario in usuarios_selecionados:
-            valores = [usuario]
+        for idx, usuario in enumerate(usuarios_selecionados):
+            linha = [usuario]
+            valores = []
             total = 0.0
-
             for mes in meses_selecionados:
                 valor = dados[usuario][mes]
-                valores.append(f"{valor:.2f}")
+                valores.append(valor)
                 total += valor
 
-            valores.append(f"{total:.2f}")
-            self.tree_comp.insert("", "end", values=valores)
+            valores_fmt = []
+            for i, v in enumerate(valores):
+                if i == 0:
+                    valores_fmt.append(f"{v:.2f}")
+                else:
+                    if v > valores[i-1]:
+                        valores_fmt.append(f"{v:.2f} ▲")
+                        celulas_verdes.append((idx, i+1))  # +1 porque primeira coluna é usuário
+                    elif v < valores[i-1]:
+                        valores_fmt.append(f"{v:.2f} ▼")
+                        celulas_vermelhas.append((idx, i+1))
+                    else:
+                        valores_fmt.append(f"{v:.2f}")
+            linha.extend(valores_fmt)
+            linha.append(f"{total:.2f}")
+            dados_tabela.append(linha)
+
+        # Preenche e colore o Sheet
+        self.sheet_comp.headers(colunas)
+        self.sheet_comp.set_sheet_data(dados_tabela)
+
+        for linha, coluna in celulas_verdes:
+            self.sheet_comp.highlight_cells(row=linha, column=coluna, bg="lightgreen", fg="black")
+        for linha, coluna in celulas_vermelhas:
+            self.sheet_comp.highlight_cells(row=linha, column=coluna, bg="lightcoral", fg="black")
+
+        self.sheet_comp.set_all_column_widths(120)
+        self.sheet_comp.set_column_width(0, 200)
+
 
 
     def gerar_tabela_semana(self):
