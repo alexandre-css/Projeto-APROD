@@ -689,6 +689,8 @@ class ExcelAnalyzerApp:
 
     def criar_aba_comparacao_meses(self):
         import os
+        from tksheet import Sheet
+        
         frame_principal = ttk.Frame(self.notebook)
         self.notebook.add(frame_principal, text="Comparação de Meses")
 
@@ -755,32 +757,25 @@ class ExcelAnalyzerApp:
         self.kpi_comp_frame.pack(fill="x", padx=10, pady=5)
         self.kpi_comp_labels = {}
 
-        # Tabela comparativa
+        # Tabela comparativa usando tksheet em vez de Treeview
         frame_tabela = ttk.LabelFrame(frame_principal, text="Comparação Detalhada", padding=10)
         frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
-        self.tree_comp_meses = ttk.Treeview(
+        
+        # Inicializa o Sheet com dados vazios (será preenchido depois)
+        self.sheet_comp_meses = Sheet(
             frame_tabela,
-            columns=("Usuário",),
-            show="headings",
-            selectmode="extended",
-            bootstyle=INFO
+            data=[[""]],  # Dados iniciais vazios
+            headers=["Usuário"],  # Cabeçalho inicial
+            theme="light blue",
+            show_x_scrollbar=True,
+            show_y_scrollbar=True,
+            height=400  # Altura inicial
         )
-        # Scrollbar vertical
-        scroll_y = ttk.Scrollbar(frame_tabela, orient="vertical", command=self.tree_comp_meses.yview)
-        scroll_y.pack(side="right", fill="y")
-        self.tree_comp_meses.configure(yscrollcommand=scroll_y.set)
-        # Scrollbar horizontal
-        scroll_x = ttk.Scrollbar(frame_tabela, orient="horizontal", command=self.tree_comp_meses.xview)
-        scroll_x.pack(side="bottom", fill="x")
-        self.tree_comp_meses.configure(xscrollcommand=scroll_x.set)
-        self.tree_comp_meses.pack(fill="both", expand=True)
-        self.tree_comp_meses.heading("Usuário", text="Usuário", anchor="center")
-        self.tree_comp_meses.column("Usuário", width=200, anchor="center", stretch=True)
-        # Tags para flechas coloridas
-        self.tree_comp_meses.tag_configure('flecha_verde', foreground='green')
-        self.tree_comp_meses.tag_configure('flecha_vermelha', foreground='red')
+        self.sheet_comp_meses.pack(fill="both", expand=True)
+        
         self.atualizar_comboboxes_comparacao()
         self.listbox_meses.update_idletasks()
+
 
     def comparar_todos_meses(self):
         self.listbox_meses.selection_set(0, "end")
@@ -842,7 +837,7 @@ class ExcelAnalyzerApp:
         self.gerenciador_pesos.carregar_pesos()
         meses_selecionados.sort(key=ExcelAnalyzerApp.chave_mes_ano)
         arquivos_selecionados = [self.mapa_arquivo_meses[mes] for mes in meses_selecionados]
-
+        
         dados_meses = []
         for mes, arquivo in zip(meses_selecionados, arquivos_selecionados):
             df = pd.read_excel(os.path.join("dados_mensais", arquivo))
@@ -860,66 +855,65 @@ class ExcelAnalyzerApp:
 
         todos_usuarios = sorted({usuario for prod in dados_meses for usuario in prod.index})
         colunas = ["Usuário"] + meses_selecionados + ["Total"]
-
-        self.tree_comp_meses.delete(*self.tree_comp_meses.get_children())
-        self.tree_comp_meses["columns"] = colunas
-
-        for col in colunas:
-            self.tree_comp_meses.heading(col, text=col, command=lambda c=col: self.sort_treeview_comp(c, False))
-            self.tree_comp_meses.column(col, anchor="center", stretch=True, width=120)
-
-        # Limpa tags antigas (de cor de linha)
-        self.tree_comp_meses.tag_configure('aumento', foreground='')
-        self.tree_comp_meses.tag_configure('reducao', foreground='')
-        self.tree_comp_meses.tag_configure('neutro', foreground='')
-        # Tags para flechas
-        self.tree_comp_meses.tag_configure('flecha_verde', foreground='green')
-        self.tree_comp_meses.tag_configure('flecha_vermelha', foreground='red')
-
-        for usuario in todos_usuarios:
+        
+        # Preparar dados para o tksheet
+        dados_tabela = []
+        celulas_verdes = []  # Lista de tuplas (linha, coluna) para células verdes
+        celulas_vermelhas = []  # Lista de tuplas (linha, coluna) para células vermelhas
+        
+        for idx, usuario in enumerate(todos_usuarios):
             linha = [usuario]
             valores = []
             total = 0
-            tags = ['']  # primeira coluna nunca tem flecha
+            
             for i, prod in enumerate(dados_meses):
                 valor = prod.loc[usuario]["Peso"] if usuario in prod.index else 0
                 valores.append(valor)
                 total += valor
 
-            valores_fmt = []
             for i, v in enumerate(valores):
                 if i == 0:
-                    valores_fmt.append(f"{v:.2f}")
-                    tags.append('')
+                    linha.append(f"{v:.2f}")
                 else:
                     if v > valores[i-1]:
-                        valores_fmt.append(f"{v:.2f} ▲")
-                        tags.append('flecha_verde')
+                        linha.append(f"{v:.2f} ▲")
+                        celulas_verdes.append((idx, i+1))  # +1 porque a primeira coluna é o usuário
                     elif v < valores[i-1]:
-                        valores_fmt.append(f"{v:.2f} ▼")
-                        tags.append('flecha_vermelha')
+                        linha.append(f"{v:.2f} ▼")
+                        celulas_vermelhas.append((idx, i+1))  # +1 porque a primeira coluna é o usuário
                     else:
-                        valores_fmt.append(f"{v:.2f}")
-                        tags.append('')
-            linha.extend(valores_fmt)
+                        linha.append(f"{v:.2f}")
+            
             linha.append(f"{total:.2f}")
-
-            item_id = self.tree_comp_meses.insert("", "end", values=linha)
-            # Aplica cor só na célula da flecha (usando tag na linha, pois Treeview padrão não colore célula individual)
-            # Como workaround, colore a linha se houver flecha, mas só se quiser.
-            # Aqui, não colore linha nenhuma, só flecha pelo texto.
-
+            dados_tabela.append(linha)
+        
+        # Configurar o tksheet
+        self.sheet_comp_meses.headers(colunas)
+        self.sheet_comp_meses.set_sheet_data(dados_tabela)
+        
+        # Aplicar cores nas células
+        for linha, coluna in celulas_verdes:
+            self.sheet_comp_meses.highlight_cells(row=linha, column=coluna, bg="lightgreen", fg="black")
+        
+        for linha, coluna in celulas_vermelhas:
+            self.sheet_comp_meses.highlight_cells(row=linha, column=coluna, bg="lightcoral", fg="black")
+        
+        # Ajustar largura das colunas
+        self.sheet_comp_meses.set_all_column_widths(120)
+        self.sheet_comp_meses.set_column_width(0, 200)  # Coluna de usuário mais larga
+        
         # Atualiza KPIs
         totais = [prod["Peso"].sum() for prod in dados_meses]
         for lbl in self.kpi_comp_labels.values():
             lbl.destroy()
         self.kpi_comp_labels = {}
+        
         for i, (mes, total) in enumerate(zip(meses_selecionados, totais)):
             lbl_texto = f"Total {mes}: {total:.2f}"
             lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
             lbl.pack(side="left", padx=16)
             self.kpi_comp_labels[mes] = lbl
-
+        
         if len(totais) >= 2:
             primeiro = totais[0]
             ultimo = totais[-1]
@@ -932,6 +926,7 @@ class ExcelAnalyzerApp:
             )
             lbl_variacao.pack(side="left", padx=16)
             self.kpi_comp_labels["Variação (%)"] = lbl_variacao
+
 
     def comparar_todos_meses(self):
         # Seleciona todos os meses na listbox
