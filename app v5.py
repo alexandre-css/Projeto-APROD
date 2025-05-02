@@ -36,7 +36,8 @@ def encontrar_linha_cabecalho_csv(filepath, colunas_esperadas):
     for i in range(10):
         try:
             df_temp = pd.read_csv(filepath, header=i, sep=None, engine='python')
-            cols = [normalizar_coluna(str(c)) for c in df_temp.columns]
+            cols = df_temp.columns[:7]  # Seleciona colunas A-G (índices 0 a 6)
+            df_temp = df_temp[cols].copy()
             if all(col in cols for col in colunas_esperadas):
                 return i
         except Exception:
@@ -685,16 +686,10 @@ class ExcelAnalyzerApp:
     def criar_aba_comparacao_meses(self):
         import os
         from tksheet import Sheet
-        
-    # Frame principal da aba
-        frame_principal = ttk.Frame(self.notebook)
-        self.notebook.add(frame_principal, text="Comparação de Meses")
-        frame_principal.pack(fill="both", expand=True)
 
         # Frame principal da aba
         frame_principal = ttk.Frame(self.notebook)
         self.notebook.add(frame_principal, text="Comparação de Meses")
-        frame_principal.pack(fill="both", expand=True)
 
         # Listar arquivos disponíveis
         pasta = "dados_mensais"
@@ -858,7 +853,7 @@ class ExcelAnalyzerApp:
         self.gerenciador_pesos.carregar_pesos()
         meses_selecionados.sort(key=ExcelAnalyzerApp.chave_mes_ano)
         arquivos_selecionados = [self.mapa_arquivo_meses[mes] for mes in meses_selecionados]
-        
+
         dados_meses = []
         for mes, arquivo in zip(meses_selecionados, arquivos_selecionados):
             df = pd.read_excel(os.path.join("dados_mensais", arquivo))
@@ -884,7 +879,6 @@ class ExcelAnalyzerApp:
         celulas_top3 = []      # top 3 valores por mês
         celulas_total = []     # coluna de total
         celulas_zeradas = []   # valores zerados
-        linhas_alternadas = [] # linhas alternadas
 
         # Monta tabela e marca flechas
         for idx, usuario in enumerate(todos_usuarios):
@@ -915,8 +909,6 @@ class ExcelAnalyzerApp:
             linha.append(f"{total:.2f}")
             dados_tabela.append(linha)
             celulas_total.append((idx, len(colunas)-1))
-            if idx % 2 == 0:
-                linhas_alternadas.append(idx)
 
         # Top 3 valores de cada mês (coluna)
         for col in range(1, len(colunas)-1):  # ignora usuário e total
@@ -928,6 +920,10 @@ class ExcelAnalyzerApp:
         # Atualiza o tksheet
         self.sheet_comp_meses.headers(colunas)
         self.sheet_comp_meses.set_sheet_data(dados_tabela)
+
+        # Centraliza dados e cabeçalhos
+        self.sheet_comp_meses.align_columns(columns=tuple(range(len(colunas))), align="center")
+        self.sheet_comp_meses.align_header(columns=tuple(range(len(colunas))), align="center")
 
         # Coluna de total (azul claro)
         for row, col in celulas_total:
@@ -945,11 +941,15 @@ class ExcelAnalyzerApp:
         for row, col in celulas_vermelhas:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#ffebee", fg="red")
 
+        # Valores zerados (cinza claro)
+        for row, col in celulas_zeradas:
+            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#f1f3f4", fg="#888888")
+
         # Ajustar largura das colunas
         self.sheet_comp_meses.set_all_column_widths(120)
         self.sheet_comp_meses.column_width(0, 200)
 
-        # Atualiza KPIs
+        # Atualiza KPIs (apenas totais, sem variação total)
         totais = [prod["Peso"].sum() for prod in dados_meses]
         for lbl in self.kpi_comp_labels.values():
             lbl.destroy()
@@ -959,21 +959,6 @@ class ExcelAnalyzerApp:
             lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
             lbl.pack(side="left", padx=16)
             self.kpi_comp_labels[mes] = lbl
-
-        if len(totais) >= 2:
-            primeiro = totais[0]
-            ultimo = totais[-1]
-            variacao = ((ultimo - primeiro) / primeiro * 100) if primeiro != 0 else 0
-            lbl_variacao = ttk.Label(
-                self.kpi_comp_frame,
-                text=f"Variação Total (%): {variacao:+.1f}%",
-                font=("Segoe UI", 12, "bold"),
-                foreground="green" if variacao > 0 else "red" if variacao < 0 else "black"
-            )
-            lbl_variacao.pack(side="left", padx=16)
-            self.kpi_comp_labels["Variação (%)"] = lbl_variacao
-
-
 
     def comparar_todos_meses(self):
         # Seleciona todos os meses na listbox
@@ -1098,7 +1083,15 @@ class ExcelAnalyzerApp:
         self.sheet_comp.set_all_column_widths(120)
         self.sheet_comp.set_column_width(0, 200)
 
-
+        totais = [prod["Peso"].sum() for prod in dados_meses]
+        for lbl in self.kpi_comp_labels.values():
+            lbl.destroy()
+        self.kpi_comp_labels = {}
+        for i, (mes, total) in enumerate(zip(meses_selecionados, totais)):
+            lbl_texto = f"Total {mes}: {total:.2f}"
+            lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
+            lbl.pack(side="left", padx=16)
+            self.kpi_comp_labels[mes] = lbl
 
     def gerar_tabela_semana(self):
         df_consolidado = self.consolidar_dados_meses()
@@ -1251,7 +1244,7 @@ class ExcelAnalyzerApp:
                 self.df = pd.read_csv(file_path, header=linha_cabecalho, sep=None, engine='python')
             else:
                 linha_cabecalho = encontrar_linha_cabecalho_excel(file_path, colunas_esperadas)
-                self.df = pd.read_excel(file_path, header=linha_cabecalho)
+                self.df = df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
 
             self.df = self.df.loc[:, ~self.df.columns.str.contains('^Unnamed')]
 
