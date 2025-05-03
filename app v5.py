@@ -14,10 +14,19 @@ import json
 import os
 import tkinter as tk
 import unicodedata
+import numpy as np
 try:
     from fpdf import FPDF
 except ImportError:
     FPDF = None
+
+def formatar_valor(v):
+    try:
+        if isinstance(v, pd.Series):
+            v = v.iloc[0] if not v.empty else 0.0
+        return f"{float(v):.2f}"
+    except Exception:
+        return "0.00"
 
 def encontrar_linha_cabecalho_excel(filepath, colunas_esperadas):
     import pandas as pd
@@ -595,13 +604,13 @@ class ExcelAnalyzerApp:
         ttk.Button(frame_filtros, text="Visualizar Gráficos de Produtividade", command=self.visualizar_graficos_produtividade, bootstyle=PRIMARY).grid(row=1, column=1, padx=5, pady=5)
         ttk.Button(frame_filtros, text="Exportar para Excel", command=self.exportar_relatorio_excel, bootstyle=SECONDARY).grid(row=1, column=2, padx=5, pady=5)
         ttk.Button(frame_filtros, text="Exportar para PDF", command=self.exportar_relatorio_pdf, bootstyle=SECONDARY).grid(row=1, column=3, padx=5, pady=5)
-        self.tree_relatorio = ttk.Treeview(frame_relatorios, columns=("Usuário", "Pontuação"), show="headings", bootstyle=INFO)
-        self.tree_relatorio.heading("Usuário", text="Usuário", command=lambda: self.ordenar_treeview_relatorio("Usuário", False))
+        self.tree_relatorio = ttk.Treeview(frame_relatorios, columns=("usuario", "Pontuação"), show="headings", bootstyle=INFO)
+        self.tree_relatorio.heading("usuario", text="usuario", command=lambda: self.ordenar_treeview_relatorio("usuario", False))
         self.tree_relatorio.heading("Pontuação", text="Pontuação Total", command=lambda: self.ordenar_treeview_relatorio("Pontuação", False))
-        self.tree_relatorio.column("Usuário", width=200, anchor="center", stretch=False)
+        self.tree_relatorio.column("usuario", width=200, anchor="center", stretch=False)
         self.tree_relatorio.column("Pontuação", width=150, anchor="center", stretch=False)
         self.tree_relatorio.pack(fill="both", expand=True, padx=10, pady=10)
-        self.tree_relatorio.column("Usuário", width=200, anchor="w")
+        self.tree_relatorio.column("usuario", width=200, anchor="w")
         for col in self.tree_relatorio["columns"][1:]:
             self.tree_relatorio.column(col, width=120, anchor="center")
 
@@ -652,7 +661,7 @@ class ExcelAnalyzerApp:
         self.sheet_comp = Sheet(
             frame_tabela,
             data=[[""]],  # Inicialmente vazio
-            headers=["Usuário"],
+            headers=["usuario"],
             theme="light blue",
             show_x_scrollbar=True,
             show_y_scrollbar=True,
@@ -663,6 +672,9 @@ class ExcelAnalyzerApp:
         self.check_vars_usuarios = dict()
         self.checkbuttons_usuarios = dict()
         self.atualizar_checkboxes_usuarios()
+
+    def comparar_produtividade_usuarios(self):
+        messagebox.showinfo("Info", "Função ainda não implementada.")
 
 
     def atualizar_comboboxes_comparacao(self):
@@ -766,7 +778,7 @@ class ExcelAnalyzerApp:
         self.sheet_comp_meses = Sheet(
             frame_tabela,
             data=[[""]],
-            headers=["Usuário"],
+            headers=["usuario"],
             theme="light blue",
             show_x_scrollbar=True,
             show_y_scrollbar=True
@@ -785,7 +797,6 @@ class ExcelAnalyzerApp:
             ("header_left_click", self.ordenar_coluna_comparacao_meses)
         ])
 
-
     def ordenar_coluna_comparacao_meses(self, event):
         col = event[1]
         if not hasattr(self, '_ordem_crescente'):
@@ -793,10 +804,6 @@ class ExcelAnalyzerApp:
         crescente = self._ordem_crescente.get(col, True)
         self.sheet_comp_meses.sort_table(col, reverse=not crescente)
         self._ordem_crescente[col] = not crescente
-
-    def comparar_todos_meses(self):
-        self.listbox_meses.selection_set(0, "end")
-        self.comparar_meses()
 
     def verificar_arquivos_mensais(self):
         pasta = "dados_mensais"
@@ -809,10 +816,7 @@ class ExcelAnalyzerApp:
             print("Pasta dados_mensais não existe!")
 
     def excluir_dados_comparacao(self):
-        # Aqui você deve apagar os dados das tabelas da aba "Comparação de meses"
-        # Supondo que você tenha Treeviews ou widgets onde os dados são mostrados, limpe-os
-        
-        # Exemplo genérico para limpar Treeviews:
+
         if hasattr(self, 'treeview_comparacao_mes'):
             for item in self.treeview_comparacao_mes.get_children():
                 self.treeview_comparacao_mes.delete(item)
@@ -820,8 +824,6 @@ class ExcelAnalyzerApp:
         if hasattr(self, 'treeview_comparacao_mes2'):
             for item in self.treeview_comparacao_mes2.get_children():
                 self.treeview_comparacao_mes2.delete(item)
-        
-        # Se tiver outras tabelas ou widgets, limpe aqui também
 
     def sort_treeview_comp(self, col, reverse):
         items = [(self.tree_comp_meses.set(k, col), k) for k in self.tree_comp_meses.get_children('')]
@@ -857,36 +859,44 @@ class ExcelAnalyzerApp:
         dados_meses = []
         for mes, arquivo in zip(meses_selecionados, arquivos_selecionados):
             df = pd.read_excel(os.path.join("dados_mensais", arquivo))
+            df.columns = [normalizar_coluna(col) for col in df.columns]
             col_usuario_mes = next((col for col in df.columns if normalizar_coluna(col) == "usuario"), None)
             col_agendamento_mes = next((col for col in df.columns if normalizar_coluna(col) == "agendamento"), None)
-            if col_usuario_mes and col_agendamento_mes:
-                df = df.dropna(subset=[col_usuario_mes, col_agendamento_mes])
+            if col_usuario_mes:
+                # NÃO filtra por col_agendamento_mes!
+                df = df.dropna(subset=[col_usuario_mes])
                 df[col_usuario_mes] = df[col_usuario_mes].astype(str).str.strip()
-                df["TipoAgendamentoLimpo"] = df[col_agendamento_mes].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
-                df["Peso"] = df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-                prod = df.groupby(col_usuario_mes)[["Peso"]].sum()
+                # Preenche Agendamento dos ACÓRDÃOS, caso ainda haja em '
+                if "tipo" in df.columns and "agendamento" in df.columns:
+                    df.loc[df["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
+                if col_agendamento_mes:
+                    df["TipoAgendamentoLimpo"] = df[col_agendamento_mes].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+                    df["Peso"] = df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
+                else:
+                    df["Peso"] = 1.0
+                prod = df.groupby(col_usuario_mes)["Peso"].sum()
             else:
                 prod = pd.DataFrame(columns=["Peso"])
             dados_meses.append(prod)
 
         todos_usuarios = sorted({usuario for prod in dados_meses for usuario in prod.index})
-        colunas = ["Usuário"] + meses_selecionados + ["Total"]
-
-        # Preparar dados para o tksheet
+        colunas = ["usuario"] + meses_selecionados + ["Total"]
         dados_tabela = []
-        celulas_verdes = []    # flecha para cima
-        celulas_vermelhas = [] # flecha para baixo
-        celulas_top3 = []      # top 3 valores por mês
-        celulas_total = []     # coluna de total
-        celulas_zeradas = []   # valores zerados
+        celulas_verdes = []
+        celulas_vermelhas = []
+        celulas_top3 = []
+        celulas_total = []
+        celulas_zeradas = []
 
-        # Monta tabela e marca flechas
         for idx, usuario in enumerate(todos_usuarios):
             linha = [usuario]
             valores = []
-            total = 0
+            total = 0.0
             for i, prod in enumerate(dados_meses):
-                valor = prod.loc[usuario]["Peso"] if usuario in prod.index else 0
+                try:
+                    valor = float(prod.at[usuario])
+                except Exception:
+                    valor = 0.0
                 valores.append(valor)
                 total += valor
 
@@ -911,51 +921,44 @@ class ExcelAnalyzerApp:
             celulas_total.append((idx, len(colunas)-1))
 
         # Top 3 valores de cada mês (coluna)
-        for col in range(1, len(colunas)-1):  # ignora usuário e total
+        for col in range(1, len(colunas)-1):
             valores_col = [(row, float(dados_tabela[row][col].split()[0])) for row in range(len(dados_tabela))]
             top3 = sorted(valores_col, key=lambda x: x[1], reverse=True)[:3]
             for row, _ in top3:
                 celulas_top3.append((row, col))
 
-        # Atualiza o tksheet
         self.sheet_comp_meses.headers(colunas)
         self.sheet_comp_meses.set_sheet_data(dados_tabela)
-
-        # Centraliza dados e cabeçalhos
         self.sheet_comp_meses.align_columns(columns=tuple(range(len(colunas))), align="center")
         self.sheet_comp_meses.align_header(columns=tuple(range(len(colunas))), align="center")
+
 
         # Coluna de total (azul claro)
         for row, col in celulas_total:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#e3f2fd", fg="#1565c0")
-
         # Top 3 valores por mês (amarelo claro)
         for row, col in celulas_top3:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#fff9c4", fg="#795548")
-
         # Flecha para cima (verde forte)
         for row, col in celulas_verdes:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#d0f5e8", fg="green")
-
         # Flecha para baixo (vermelho forte)
         for row, col in celulas_vermelhas:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#ffebee", fg="red")
-
         # Valores zerados (cinza claro)
         for row, col in celulas_zeradas:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#f1f3f4", fg="#888888")
 
-        # Ajustar largura das colunas
         self.sheet_comp_meses.set_all_column_widths(120)
         self.sheet_comp_meses.column_width(0, 200)
 
         # Atualiza KPIs (apenas totais, sem variação total)
-        totais = [prod["Peso"].sum() for prod in dados_meses]
+        totais = [float(prod["Peso"].sum()) if not prod.empty else 0.0 for prod in dados_meses]
         for lbl in self.kpi_comp_labels.values():
             lbl.destroy()
         self.kpi_comp_labels = {}
         for i, (mes, total) in enumerate(zip(meses_selecionados, totais)):
-            lbl_texto = f"Total {mes}: {total:.2f}"
+            lbl_texto = f"Total {mes}: {float(total):.2f}"
             lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
             lbl.pack(side="left", padx=16)
             self.kpi_comp_labels[mes] = lbl
@@ -989,110 +992,6 @@ class ExcelAnalyzerApp:
             self.checkbuttons_usuarios[usuario] = chk
             self.checkbuttons_usuarios[usuario] = chk
 
-    def comparar_produtividade_usuarios(self):
-        if self.df is None or self.df.empty:
-            messagebox.showwarning("Aviso", "Carregue os dados primeiro!")
-            return
-        col_usuario = next((col for col in self.df.columns if normalizar_coluna(col) == "usuario"), None)
-        col_agendamento = next((col for col in self.df.columns if normalizar_coluna(col) == "agendamento"), None)
-        if not col_usuario or not col_agendamento:
-            messagebox.showwarning("Aviso", "Carregue os dados e garanta que há as colunas 'Usuário' e 'Agendamento'.")
-            return
-
-        selecoes_meses = self.listbox_meses.curselection()
-        if not selecoes_meses:
-            messagebox.showwarning("Aviso", "Selecione meses na aba 'Comparação de Meses' primeiro!")
-            return
-
-        meses_selecionados = [self.listbox_meses.get(i) for i in selecoes_meses]
-        arquivos_selecionados = [self.mapa_arquivo_meses[mes] for mes in meses_selecionados]
-
-        usuarios_selecionados = [u for u, var in self.check_vars_usuarios.items() if var.get()]
-        if not usuarios_selecionados:
-            messagebox.showwarning("Aviso", "Selecione pelo menos um usuário para comparar.")
-            return
-
-        # Processar dados de cada mês
-        from collections import defaultdict
-        dados = defaultdict(lambda: defaultdict(float))
-        for mes, arquivo in zip(meses_selecionados, arquivos_selecionados):
-            try:
-                df_mes = pd.read_excel(os.path.join("dados_mensais", arquivo))
-                col_usuario_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "usuario"), None)
-                col_agendamento_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "agendamento"), None)
-                if col_usuario_mes and col_agendamento_mes:
-                    df_mes = df_mes.dropna(subset=[col_usuario_mes, col_agendamento_mes])
-                    df_mes[col_usuario_mes] = df_mes[col_usuario_mes].astype(str).str.strip()
-                    df_mes["TipoAgendamentoLimpo"] = df_mes[col_agendamento_mes].apply(
-                        lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip()
-                    )
-                    df_mes["Peso"] = df_mes["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-                    for usuario in usuarios_selecionados:
-                        if usuario in df_mes[col_usuario_mes].values:
-                            dados[usuario][mes] = df_mes[df_mes[col_usuario_mes] == usuario]["Peso"].sum()
-                        else:
-                            dados[usuario][mes] = 0.0
-                else:
-                    for usuario in usuarios_selecionados:
-                        dados[usuario][mes] = 0.0
-            except Exception as e:
-                print(f"Erro ao processar {arquivo}: {str(e)}")
-                continue
-
-        # Monta dados e aplica flechas e cores
-        colunas = ["Usuário"] + meses_selecionados + ["Total"]
-        dados_tabela = []
-        celulas_verdes = []
-        celulas_vermelhas = []
-
-        for idx, usuario in enumerate(usuarios_selecionados):
-            linha = [usuario]
-            valores = []
-            total = 0.0
-            for mes in meses_selecionados:
-                valor = dados[usuario][mes]
-                valores.append(valor)
-                total += valor
-
-            valores_fmt = []
-            for i, v in enumerate(valores):
-                if i == 0:
-                    valores_fmt.append(f"{v:.2f}")
-                else:
-                    if v > valores[i-1]:
-                        valores_fmt.append(f"{v:.2f} ▲")
-                        celulas_verdes.append((idx, i+1))  # +1 porque primeira coluna é usuário
-                    elif v < valores[i-1]:
-                        valores_fmt.append(f"{v:.2f} ▼")
-                        celulas_vermelhas.append((idx, i+1))
-                    else:
-                        valores_fmt.append(f"{v:.2f}")
-            linha.extend(valores_fmt)
-            linha.append(f"{total:.2f}")
-            dados_tabela.append(linha)
-
-        # Preenche e colore o Sheet
-        self.sheet_comp.headers(colunas)
-        self.sheet_comp.set_sheet_data(dados_tabela)
-
-        for linha, coluna in celulas_verdes:
-            self.sheet_comp.highlight_cells(row=linha, column=coluna, bg="lightgreen", fg="black")
-        for linha, coluna in celulas_vermelhas:
-            self.sheet_comp.highlight_cells(row=linha, column=coluna, bg="lightcoral", fg="black")
-
-        self.sheet_comp.set_all_column_widths(120)
-        self.sheet_comp.set_column_width(0, 200)
-
-        totais = [prod["Peso"].sum() for prod in dados_meses]
-        for lbl in self.kpi_comp_labels.values():
-            lbl.destroy()
-        self.kpi_comp_labels = {}
-        for i, (mes, total) in enumerate(zip(meses_selecionados, totais)):
-            lbl_texto = f"Total {mes}: {total:.2f}"
-            lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
-            lbl.pack(side="left", padx=16)
-            self.kpi_comp_labels[mes] = lbl
-
     def gerar_tabela_semana(self):
         df_consolidado = self.consolidar_dados_meses()
         if df_consolidado is None or df_consolidado.empty:
@@ -1110,7 +1009,7 @@ class ExcelAnalyzerApp:
         df = df_consolidado.copy()
 
         df[col_data] = pd.to_datetime(df[col_data], dayfirst=True, errors="coerce")
-        df = df.dropna(subset=[col_usuario, col_data, col_agendamento])
+        df = df.dropna(subset=[col_usuario, col_data])
 
         # Tradução dos dias da semana para português
         dias_semana_pt = [
@@ -1147,21 +1046,22 @@ class ExcelAnalyzerApp:
         tabela = tabela.reindex(columns=dias_semana_pt, fill_value=0)
 
         self.tree_semana.delete(*self.tree_semana.get_children())
-        self.tree_semana["columns"] = ["Usuário"] + dias_semana_pt
+        self.tree_semana["columns"] = ["usuario"] + dias_semana_pt
 
         for col in self.tree_semana["columns"]:
             self.tree_semana.heading(col, text=col, command=lambda c=col: self.ordenar_treeview_semana(c, False))
             self.tree_semana.column(col, width=120, anchor="center")
 
         for usuario, row in tabela.iterrows():
-            valores = [usuario] + [row.get(d, 0) for d in dias_semana_pt]
+            valores = [usuario] + [float(row.get(d, 0)) for d in dias_semana_pt]
             self.tree_semana.insert("", "end", values=valores)
 
         soma_por_dia = tabela.sum(axis=0)
         ranking = soma_por_dia.sort_values(ascending=False)
         ranking_str = "\n".join(
-            [f"{i+1}º - {dia}: {ranking[dia]:.2f}" for i, dia in enumerate(ranking.index)]
+            [f"{i+1}º - {dia}: {float(ranking[dia]):.2f}" for i, dia in enumerate(ranking.index)]
         )
+
         self.label_ranking.config(
             text=ranking_str,
             font=("Segoe UI", 14, "bold"),
@@ -1248,6 +1148,13 @@ class ExcelAnalyzerApp:
 
             self.df = self.df.loc[:, ~self.df.columns.str.contains('^Unnamed')]
 
+            # Normaliza nomes de colunas
+            self.df.columns = [normalizar_coluna(col) for col in self.df.columns]
+
+            # PADRONIZAÇÃO: Preenche Agendamento dos ACÓRDÃOS
+            if "tipo" in self.df.columns and "agendamento" in self.df.columns:
+                self.df.loc[self.df["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
+
             colunas_disponiveis = list(self.df.columns)
             self.combo_colunas['values'] = colunas_disponiveis
 
@@ -1331,6 +1238,8 @@ class ExcelAnalyzerApp:
             self.salvar_dados_mes()
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             messagebox.showerror("Erro", f"Erro ao carregar arquivo:\n{str(e)}")
             return
         messagebox.showinfo("Sucesso", "Dados carregados com sucesso!")
@@ -1358,7 +1267,6 @@ class ExcelAnalyzerApp:
         except Exception as e:
             print(f"Erro ao extrair mês/ano do arquivo {caminho}: {e}")
         return "Mês desconhecido"
-
 
     def atualizar_treeview(self):
         if self.df is None:
@@ -1449,7 +1357,7 @@ class ExcelAnalyzerApp:
             ax.set_ylabel('Quantidade')
             for bar in bars:
                 height = bar.get_height()
-                ax.text(bar.get_x() + bar.get_width()/2, height, f'{height}', ha='center', va='bottom', fontweight='bold')
+                ax.text(bar.get_x() + bar.get_width()/2, height, f'{float(height):.2f}', ha='center', va='bottom', fontweight='bold')
             plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
         elif graph_type == "barh":
@@ -1500,78 +1408,68 @@ class ExcelAnalyzerApp:
             messagebox.showinfo("Sucesso", f"Gráfico salvo em:\n{file_path}")
 
     def gerar_relatorio_produtividade(self):
-        if getattr(self, 'inicializando', False):
+        if self.df is None or self.df.empty:
             return
-        self.tree_relatorio.delete(*self.tree_relatorio.get_children())
-        for label in self.kpi_labels.values():
-            label.config(text="--")
-        dados_usuarios = defaultdict(lambda: defaultdict(float))
 
-        # Inclui o arquivo carregado
-        if self.df is not None and not self.df.empty:
-            col_usuario = next((col for col in self.df.columns if normalizar_coluna(col) == "usuario"), None)
-            col_agendamento = next((col for col in self.df.columns if normalizar_coluna(col) == "agendamento"), None)
-            if col_usuario and col_agendamento:
-                self.df[col_usuario] = self.df[col_usuario].astype(str).str.strip()
-                self.df["TipoAgendamentoLimpo"] = self.df[col_agendamento].apply(
-                    lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip()
-                )
-                self.df["Peso"] = self.df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-                for usuario, grupo in self.df.groupby(col_usuario):
-                    dados_usuarios[usuario]["Atual"] = grupo["Peso"].sum()
+        # Normaliza nomes das colunas
+        self.df.columns = [normalizar_coluna(col) for col in self.df.columns]
 
-        # Inclui arquivos mensais salvos
-        pasta_mensal = "dados_mensais"
-        arquivos_meses = [f for f in os.listdir(pasta_mensal) if f.endswith(('.xlsx', '.csv'))] if os.path.exists(pasta_mensal) else []
-        for arquivo in arquivos_meses:
-            try:
-                caminho = os.path.join(pasta_mensal, arquivo)
-                mes = self.extrair_mes_ano_do_arquivo(caminho)
-                df_mes = pd.read_excel(caminho)
-                col_usuario_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "usuario"), None)
-                col_agendamento_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "agendamento"), None)
-                if col_usuario_mes and col_agendamento_mes:
-                    df_mes = df_mes.dropna(subset=[col_usuario_mes, col_agendamento_mes])
-                    df_mes[col_usuario_mes] = df_mes[col_usuario_mes].astype(str).str.strip()
-                    df_mes["TipoAgendamentoLimpo"] = df_mes[col_agendamento_mes].apply(
-                        lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip()
-                    )
-                    df_mes["Peso"] = df_mes["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-                    for usuario, grupo in df_mes.groupby(col_usuario_mes):
-                        dados_usuarios[usuario][mes] = grupo["Peso"].sum()
-            except Exception as e:
-                print(f"Erro ao processar {arquivo}: {str(e)}")
-                continue
+        col_usuario = next((col for col in self.df.columns if normalizar_coluna(col) == "usuario"), None)
+        col_agendamento = next((col for col in self.df.columns if normalizar_coluna(col) == "agendamento"), None)
+        col_tipo = next((col for col in self.df.columns if normalizar_coluna(col) == "tipo"), None)
 
-        # Monta as colunas do relatório
-        meses = sorted({mes for user in dados_usuarios.values() for mes in user.keys()}, key=self.chave_mes_ano)
-        if "Atual" in meses:
-            meses.remove("Atual")
-            meses.append("Atual")
-        colunas = ["Usuário"] + meses + ["Total"]
+        # Preenche Agendamento dos ACÓRDÃOS
+        if col_tipo and col_agendamento:
+            self.df.loc[self.df[col_tipo].str.upper().str.strip() == "ACÓRDÃO", col_agendamento] = "Juntada de Relatório/Voto/Acórdão (581)"
 
-        self.tree_relatorio["columns"] = colunas
-        for col in colunas:
-            self.tree_relatorio.heading(
-                col,
-                text=col,
-                command=lambda c=col: self.ordenar_treeview_relatorio(c, False)
-            )
-            self.tree_relatorio.column(col, width=120, anchor="center")
+        # Filtra apenas por usuário (não por agendamento!)
+        if col_usuario:
+            self.df = self.df.dropna(subset=[col_usuario])
+            self.df[col_usuario] = self.df[col_usuario].astype(str).str.strip()
+        else:
+            return
 
-        # Insere dados
-        for usuario, meses_data in sorted(dados_usuarios.items(),
-                                         key=lambda x: sum(x[1].values()),
-                                         reverse=True):
-            total = sum(meses_data.values())
-            linha = [usuario]
+        # Limpa o tipo de agendamento para cálculo do peso
+        if col_agendamento:
+            self.df["TipoAgendamentoLimpo"] = self.df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+            self.df["Peso"] = self.df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
+        else:
+            self.df["Peso"] = 1.0
+
+        # Agrupa por usuário e mês
+        self.df["Mes"] = self.df["datacriacao"].apply(lambda x: x.strftime("%b/%Y") if not pd.isnull(x) else "")
+        usuarios = sorted(self.df[col_usuario].unique())
+        meses = sorted(self.df["Mes"].unique(), key=ExcelAnalyzerApp.chave_mes_ano)
+        dados_usuarios = {usuario: {} for usuario in usuarios}
+
+        for usuario in usuarios:
+            grupo = self.df[self.df[col_usuario] == usuario]
             for mes in meses:
-                linha.append(f"{meses_data.get(mes, 0):.2f}")
-            linha.append(f"{total:.2f}")
+                prod_mes = grupo[grupo["Mes"] == mes]["Peso"].sum()
+                dados_usuarios[usuario][mes] = float(prod_mes)
+
+        # Monta tabela para exibição
+        colunas = ["usuario"] + meses + ["Total"]
+        dados_tabela = []
+        for usuario in usuarios:
+            linha = [usuario]
+            total = 0.0
+            for mes in meses:
+                valor = dados_usuarios[usuario].get(mes, 0.0)
+                linha.append(formatar_valor(valor))
+                total += valor
+            linha.append(f"{float(total):.2f}")
+            dados_tabela.append(linha)
+
+        # Exibe na treeview ou outro componente
+        self.tree_relatorio.delete(*self.tree_relatorio.get_children())
+        self.tree_relatorio["columns"] = colunas  # Inclua "usuario"!
+        for i, col in enumerate(colunas):
+            self.tree_relatorio.heading(col, text="Usuário" if col == "usuario" else col)
+            self.tree_relatorio.column(col, width=120 if i > 0 else 180, anchor="center")
+
+        for linha in dados_tabela:
             self.tree_relatorio.insert("", "end", values=linha)
-
-        self.atualizar_kpis()
-
 
     def mostrar_mensagem(tipo, titulo, mensagem):
         if tipo == "erro":
@@ -1591,10 +1489,14 @@ class ExcelAnalyzerApp:
         # Inclui o arquivo atualmente carregado na interface
         if self.df is not None and not self.df.empty:
             df_atual = self.df.copy()
+            df_atual.columns = [normalizar_coluna(col) for col in df_atual.columns]
+            # PADRONIZAÇÃO: Preenche Agendamento dos ACÓRDÃOS
+            if "tipo" in df_atual.columns and "agendamento" in df_atual.columns:
+                df_atual.loc[df_atual["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
             col_usuario = next((col for col in df_atual.columns if normalizar_coluna(col) == "usuario"), None)
             col_agendamento = next((col for col in df_atual.columns if normalizar_coluna(col) == "agendamento"), None)
-            if col_usuario and col_agendamento:
-                df_atual = df_atual.dropna(subset=[col_usuario, col_agendamento])
+            if col_usuario:
+                df_atual = df_atual.dropna(subset=[col_usuario])
                 df_atual[col_usuario] = df_atual[col_usuario].astype(str).str.strip()
                 df_atual["TipoAgendamentoLimpo"] = df_atual[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
                 df_atual["Peso"] = df_atual["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
@@ -1607,18 +1509,40 @@ class ExcelAnalyzerApp:
             caminho = os.path.join(pasta, arquivo)
             try:
                 df_mes = pd.read_excel(caminho)
+                df_mes.columns = [normalizar_coluna(col) for col in df_mes.columns]
+                # PADRONIZAÇÃO: Preenche Agendamento dos ACÓRDÃOS
+                if "tipo" in df_mes.columns and "agendamento" in df_mes.columns:
+                    df_mes.loc[df_mes["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
                 col_usuario_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "usuario"), None)
                 col_agendamento_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "agendamento"), None)
-                if col_usuario_mes and col_agendamento_mes:
-                    df_mes = df_mes.dropna(subset=[col_usuario_mes, col_agendamento_mes])
+                if col_usuario_mes:
+                    df_mes = df_mes.dropna(subset=[col_usuario_mes])
                     df_mes[col_usuario_mes] = df_mes[col_usuario_mes].astype(str).str.strip()
                     df_mes["TipoAgendamentoLimpo"] = df_mes[col_agendamento_mes].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
                     df_mes["Peso"] = df_mes["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
                     dfs.append(df_mes)
             except Exception as e:
                 print(f"Erro ao processar {arquivo}: {e}")
+
+        for i, df in enumerate(dfs):
+            df.columns = pd.Index(df.columns).map(str)
+            _, idx = np.unique(df.columns, return_index=True)
+            df = df.iloc[:, sorted(idx)]
+            dfs[i] = df
+        dfs = [df.reset_index(drop=True) for df in dfs]
+        df_conc = pd.concat(dfs, ignore_index=True)
+
+
         if dfs:
-            return pd.concat(dfs, ignore_index=True)
+            dfs = [df.reset_index(drop=True) for df in dfs]
+            df_conc = pd.concat(dfs, ignore_index=True)
+            # Normaliza os nomes das colunas
+            df_conc.columns = [normalizar_coluna(col) for col in df_conc.columns]
+            # Limpa tipo e nroprocesso
+            for col in ["tipo", "nroprocesso"]:
+                if col in df_conc.columns:
+                    df_conc[col] = df_conc[col].astype(str).str.strip().replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
+            return df_conc
         return None
 
     def visualizar_graficos_produtividade(self):
@@ -1628,7 +1552,7 @@ class ExcelAnalyzerApp:
             return
 
         colunas = self.tree_relatorio["columns"]
-        meses = [col for col in colunas if col not in ("Usuário", "Total")]
+        meses = [col for col in colunas if col not in ("usuario", "Total")]
         if not meses:
             messagebox.showwarning("Aviso", "Gere o relatório de produtividade primeiro!")
             return
@@ -1867,7 +1791,7 @@ class ExcelAnalyzerApp:
         file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Arquivo Excel", "*.xlsx")])
         if file_path:
             dados = [self.tree_relatorio.item(item)['values'] for item in self.tree_relatorio.get_children()]
-            df_export = pd.DataFrame(dados, columns=["Usuário", "Pontuação"])
+            df_export = pd.DataFrame(dados, columns=["usuario", "Pontuação"])
             df_export.to_excel(file_path, index=False)
             if getattr(self, 'inicializando', False):
                 return
@@ -1890,7 +1814,7 @@ class ExcelAnalyzerApp:
             pdf.set_font("Arial", size=12)
             pdf.cell(0, 10, "Relatório de Produtividade", ln=True, align="C")
             pdf.ln(10)
-            pdf.cell(60, 10, "Usuário", border=1)
+            pdf.cell(60, 10, "usuario", border=1)
             pdf.cell(40, 10, "Pontuação", border=1)
             pdf.ln()
             for usuario, pontuacao in dados:
@@ -1952,27 +1876,66 @@ class ExcelAnalyzerApp:
                 label.config(text="--")
             return
 
-        col_usuario = next((col for col in df_consolidado.columns if normalizar_coluna(col) == "usuario"), "Usuário")
-        col_data = next((col for col in df_consolidado.columns if normalizar_coluna(col) == "datacriacao"), None)
+        # Normaliza os nomes das colunas
+        df_consolidado.columns = [normalizar_coluna(col) for col in df_consolidado.columns]
 
-        # Minutas: total de processos (linhas)
-        minutas = len(df_consolidado)
+        # Remove colunas duplicadas "peso" (mantém só a primeira)
+        colunas_peso = [col for col in df_consolidado.columns if col.lower() == "peso"]
+        # Só remove se realmente houver mais de uma E a coluna existir
+        if len(colunas_peso) > 1:
+            for col in colunas_peso[1:]:
+                if col in df_consolidado.columns:
+                    df_consolidado = df_consolidado.drop(columns=[col])
+        # Só renomeia se "Peso" existe
+        if "Peso" in df_consolidado.columns:
+            df_consolidado.rename(columns={"Peso": "peso"}, inplace=True)
+
+        # Defina todos os nomes de coluna relevantes
+        col_usuario = "usuario"
+        col_data = "datacriacao"
+        col_tipo = "tipo"
+        col_nro_proc = "nroprocesso"
+
+        # Trata strings vazias, espaços e "nan"/"None" como NA
+        for col in [col_tipo, col_nro_proc]:
+            if col in df_consolidado.columns:
+                df_consolidado[col] = df_consolidado[col].astype(str).str.strip().replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
+
+        if col_tipo in df_consolidado.columns and col_nro_proc in df_consolidado.columns:
+            df_validas = df_consolidado.dropna(subset=[col_tipo, col_nro_proc])
+            minutas = len(df_validas)
+        else:
+            minutas = 0
+
         self.kpi_labels["Minutas"].config(text=str(minutas))
 
         # Produtividade total por usuário (soma dos pesos)
-        produtividade = df_consolidado.groupby(col_usuario)["Peso"].sum()
-        media_prod = produtividade.mean() if not produtividade.empty else 0
-        self.kpi_labels["Média Produtividade"].config(text=f"{media_prod:.2f}")
+        if col_usuario in df_consolidado.columns and "peso" in df_consolidado.columns:
+            produtividade = df_consolidado.groupby(col_usuario)["peso"].sum()
+            # Se produtividade for DataFrame, converte para Series
+            if isinstance(produtividade, pd.DataFrame):
+                produtividade = produtividade["peso"]
+            media_prod = produtividade.mean() if not produtividade.empty else 0
+            if isinstance(media_prod, pd.Series):
+                media_prod = float(media_prod.mean())
+            else:
+                media_prod = float(media_prod)
+            self.kpi_labels["Média Produtividade"].config(text=f"{media_prod:.2f}")
 
-        # Dia mais produtivo: usa exatamente o mesmo cálculo da aba "Produtividade por Dia da Semana"
-        if col_data:
-            # Converte a coluna de data para o formato datetime
+            top3 = produtividade.sort_values(ascending=False).head(3)
+            if not top3.empty:
+                top3_str = "\n".join([f"{i+1}º {u}: {p:.1f}" for i, (u, p) in enumerate(top3.items())])
+                self.kpi_labels["Top 3 Usuários"].config(text=top3_str)
+            else:
+                self.kpi_labels["Top 3 Usuários"].config(text="--")
+        else:
+            self.kpi_labels["Média Produtividade"].config(text="--")
+            self.kpi_labels["Top 3 Usuários"].config(text="--")
+
+        # Dia mais produtivo
+        if col_data in df_consolidado.columns and "peso" in df_consolidado.columns:
             df_consolidado[col_data] = pd.to_datetime(df_consolidado[col_data], errors="coerce")
-
-            # Remove linhas com valores nulos na coluna de data
             df_consolidado = df_consolidado.dropna(subset=[col_data])
-
-            # Mapeia os dias da semana para português
             dias_trad = {
                 'Monday': 'Segunda-feira',
                 'Tuesday': 'Terça-feira',
@@ -1982,30 +1945,16 @@ class ExcelAnalyzerApp:
                 'Saturday': 'Sábado',
                 'Sunday': 'Domingo'
             }
-
-            # Cria a coluna "DiaSemana" com os dias da semana em português
             df_consolidado["DiaSemana"] = df_consolidado[col_data].dt.day_name().map(dias_trad)
-
-            # Cria a tabela pivot com a soma dos pesos por dia da semana
-            tabela = df_consolidado.pivot_table(index=col_usuario, columns="DiaSemana", values="Peso", aggfunc="sum", fill_value=0)
-
-            # Calcula a soma dos pesos por dia da semana
+            tabela = df_consolidado.pivot_table(index=col_usuario, columns="DiaSemana", values="peso", aggfunc="sum", fill_value=0)
             soma_por_dia = tabela.sum(axis=0)
-
-            # Determina o dia mais produtivo
-        if not soma_por_dia.empty:
-            dia_mais_prod = soma_por_dia.idxmax()
-            self.kpi_labels["Dia Mais Produtivo"].config(text=dia_mais_prod)
+            if not soma_por_dia.empty:
+                dia_mais_prod = soma_por_dia.idxmax()
+                self.kpi_labels["Dia Mais Produtivo"].config(text=dia_mais_prod)
+            else:
+                self.kpi_labels["Dia Mais Produtivo"].config(text="--")
         else:
             self.kpi_labels["Dia Mais Produtivo"].config(text="--")
-
-        # Top 3 Usuários (soma da produtividade)
-        top3 = produtividade.sort_values(ascending=False).head(3)
-        if not top3.empty:
-            top3_str = "\n".join([f"{i+1}º {u}: {p:.1f}" for i, (u, p) in enumerate(top3.items())])
-            self.kpi_labels["Top 3 Usuários"].config(text=top3_str)
-        else:
-            self.kpi_labels["Top 3 Usuários"].config(text="--")
 
 if __name__ == "__main__":
     import sys
