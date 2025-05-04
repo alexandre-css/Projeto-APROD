@@ -1,24 +1,26 @@
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from ttkbootstrap.dialogs import MessageDialog
-from tkinter import filedialog, messagebox
-from tksheet import Sheet
+import sys
+import os
 import pandas as pd
 import calendar
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from collections import defaultdict
 from xls2xlsx import XLS2XLSX
 import re
 import json
-import os
-import tkinter as tk
 import unicodedata
 import numpy as np
 try:
     from fpdf import FPDF
 except ImportError:
     FPDF = None
+
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QTableWidget, QTableWidgetItem, QListWidget, QFileDialog,
+    QGroupBox, QComboBox, QCheckBox, QHeaderView, QFrame, QAbstractItemView, QMessageBox
+)
+from PyQt5.QtCore import Qt
 
 def carregar_planilha(file_path):
     import pandas as pd
@@ -1893,9 +1895,211 @@ class ExcelAnalyzerApp:
         else:
             self.kpi_labels["Dia Mais Produtivo"].config(text="--")
 
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Sistema de Análise e Produtividade")
+        self.resize(1200, 800)
+        self.df = None
+
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+
+        # Abas
+        self.tab_kpi = QWidget()
+        self.tab_graficos = QWidget()
+        self.tab_comparacao_meses = QWidget()
+        self.tab_config = QWidget()
+
+        self.tabs.addTab(self.tab_kpi, "KPIs")
+        self.tabs.addTab(self.tab_graficos, "Análise e Gráficos")
+        self.tabs.addTab(self.tab_comparacao_meses, "Comparação de Meses")
+        self.tabs.addTab(self.tab_config, "Configurações")
+
+        self.setup_tab_kpi()
+        self.setup_tab_graficos()
+        self.setup_tab_comparacao_meses()
+        self.setup_tab_config()
+
+    def setup_tab_kpi(self):
+        layout = QHBoxLayout()
+        kpis = [
+            ("Minutas", "--"),
+            ("Média Produtividade", "--"),
+            ("Dia Mais Produtivo", "--"),
+            ("Top 3 Usuários", "--")
+        ]
+        for title, value in kpis:
+            card = QGroupBox(title)
+            vbox = QVBoxLayout()
+            lbl = QLabel(value)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("font-size: 26px; font-weight: bold; color: #1565c0;")
+            vbox.addWidget(lbl)
+            card.setLayout(vbox)
+            card.setStyleSheet("""
+                QGroupBox { 
+                    background: #e3f2fd; 
+                    border-radius: 10px; 
+                    font-weight: bold; 
+                    border: 2px solid #1565c0;
+                }
+            """)
+            layout.addWidget(card)
+        self.tab_kpi.setLayout(layout)
+
+    def setup_tab_graficos(self):
+        layout = QHBoxLayout()
+        filtro_box = QGroupBox("Filtros para Gráfico")
+        filtro_box.setStyleSheet("QGroupBox { background: #e3f2fd; border-radius: 8px; border: 2px solid #1565c0; }")
+        filtro_layout = QVBoxLayout()
+
+        filtro_layout.addWidget(QLabel("Usuário:"))
+        self.filtro_usuario = QListWidget()
+        self.filtro_usuario.setSelectionMode(QListWidget.MultiSelection)
+        self.filtro_usuario.setStyleSheet("background: #e3f2fd;")
+        filtro_layout.addWidget(self.filtro_usuario)
+
+        filtro_layout.addWidget(QLabel("Mês:"))
+        self.filtro_mes = QListWidget()
+        self.filtro_mes.setSelectionMode(QListWidget.MultiSelection)
+        self.filtro_mes.setStyleSheet("background: #e3f2fd;")
+        filtro_layout.addWidget(self.filtro_mes)
+
+        filtro_layout.addWidget(QLabel("Tipo:"))
+        self.filtro_tipo = QListWidget()
+        self.filtro_tipo.setSelectionMode(QListWidget.MultiSelection)
+        self.filtro_tipo.setStyleSheet("background: #e3f2fd;")
+        filtro_layout.addWidget(self.filtro_tipo)
+
+        filtro_layout.addWidget(QLabel("Agendamento:"))
+        self.filtro_agendamento = QListWidget()
+        self.filtro_agendamento.setSelectionMode(QListWidget.MultiSelection)
+        self.filtro_agendamento.setStyleSheet("background: #e3f2fd;")
+        filtro_layout.addWidget(self.filtro_agendamento)
+
+        btn_graph = QPushButton("Gerar Gráfico com Filtros")
+        btn_graph.setStyleSheet("""
+            QPushButton {
+                background-color: #43a047; color: white; font-weight: bold; border-radius: 8px; padding: 6px 18px;
+            }
+            QPushButton:hover { background-color: #388e3c; }
+        """)
+        filtro_layout.addWidget(btn_graph)
+        filtro_box.setLayout(filtro_layout)
+        layout.addWidget(filtro_box, 1)
+
+        painel_grafico = QGroupBox("Gráfico")
+        painel_grafico.setStyleSheet("QGroupBox { background: #fafafa; border-radius: 8px; }")
+        painel_grafico.setMinimumWidth(600)
+        painel_grafico.setMinimumHeight(400)
+        layout.addWidget(painel_grafico, 3)
+
+        self.tab_graficos.setLayout(layout)
+
+    def setup_tab_comparacao_meses(self):
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Selecione os meses para comparar:"))
+
+        self.listbox_meses = QListWidget()
+        self.listbox_meses.setSelectionMode(QListWidget.MultiSelection)
+        self.listbox_meses.setMaximumHeight(110)
+        self.listbox_meses.setStyleSheet("""
+            QListWidget { background: #e3f2fd; font-size: 12pt; border-radius: 6px; }
+        """)
+        layout.addWidget(self.listbox_meses)
+
+        btns = QHBoxLayout()
+        btn_comparar = QPushButton("Comparar")
+        btn_comparar.setStyleSheet("QPushButton { background-color: #43a047; color: white; font-weight: bold; border-radius: 8px; padding: 6px 18px; } QPushButton:hover { background-color: #388e3c; }")
+        btn_comparar.clicked.connect(self.comparar_meses)
+        btns.addWidget(btn_comparar)
+        layout.addLayout(btns)
+
+        self.table_comp = QTableWidget()
+        self.table_comp.setStyleSheet("QTableWidget { background: #f5f5f5; font-size: 11pt; } QHeaderView::section { background: #1565c0; color: white; font-weight: bold; }")
+        self.table_comp.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_comp.setSelectionBehavior(QAbstractItemView.SelectRows)
+        layout.addWidget(self.table_comp)
+
+        self.tab_comparacao_meses.setLayout(layout)
+        self.atualizar_listbox_meses()
+
+    def atualizar_listbox_meses(self):
+        pasta = "dados_mensais"
+        arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
+        opcoes_amigaveis = []
+        mapa_arquivo_meses = {}
+        for arq in arquivos:
+            file_path = os.path.join(pasta, arq)
+            mes_ano = self.extrair_mes_ano_do_arquivo(file_path)
+            if mes_ano and "/" in mes_ano:
+                opcoes_amigaveis.append(mes_ano)
+                mapa_arquivo_meses[mes_ano] = arq
+        self.listbox_meses.clear()
+        for mes in sorted(opcoes_amigaveis, key=self.chave_mes_ano):
+            self.listbox_meses.addItem(mes)
+        self.mapa_arquivo_meses = mapa_arquivo_meses
+
+    def comparar_meses(self):
+        selecionados = [item.text() for item in self.listbox_meses.selectedItems()]
+        if len(selecionados) < 2:
+            QMessageBox.warning(self, "Aviso", "Selecione pelo menos dois meses para comparar!")
+            return
+
+        pasta = "dados_mensais"
+        dados_meses = []
+        for mes in selecionados:
+            arquivo = self.mapa_arquivo_meses.get(mes)
+            if not arquivo:
+                continue
+            file_path = os.path.join(pasta, arquivo)
+            df = carregar_planilha(file_path)
+            if "Usuário" in df.columns:
+                df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+            col_usuario = "Usuário"
+            col_agendamento = "Agendamento"
+            if "peso" not in df.columns:
+                if col_agendamento in df.columns:
+                    tipo_limpo = df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+                    df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+                else:
+                    df["peso"] = 1.0
+            if col_usuario in df.columns and "peso" in df.columns:
+                prod = df.groupby(col_usuario)["peso"].sum()
+            else:
+                prod = pd.Series(dtype=float)
+            dados_meses.append(prod)
+
+        todos_usuarios = sorted({usuario for prod in dados_meses for usuario in prod.index})
+        colunas = ["Usuário"] + selecionados + ["Total"]
+        self.table_comp.setColumnCount(len(colunas))
+        self.table_comp.setHorizontalHeaderLabels(colunas)
+        self.table_comp.setRowCount(len(todos_usuarios))
+
+        for row_idx, usuario in enumerate(todos_usuarios):
+            linha = [usuario]
+            total = 0.0
+            for prod in dados_meses:
+                valor = float(prod.get(usuario, 0.0))
+                linha.append(f"{valor:.2f}")
+                total += valor
+            linha.append(f"{total:.2f}")
+            for col_idx, valor in enumerate(linha):
+                item = QTableWidgetItem(str(valor))
+                item.setTextAlignment(Qt.AlignCenter)
+                self.table_comp.setItem(row_idx, col_idx, item)
+
+    def preencher_listbox_meses(self, lista_meses):
+        self.listbox_meses.clear()
+        for mes in lista_meses:
+            self.listbox_meses.addItem(str(mes))
+
 if __name__ == "__main__":
-    import sys
-    import os
+    app = QApplication(sys.argv)
+    win = MainWindow()
+    win.show()
+    sys.exit(app.exec_())
 
     root = ttk.Window(themename="flatly")
 
