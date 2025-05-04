@@ -20,6 +20,15 @@ try:
 except ImportError:
     FPDF = None
 
+def carregar_planilha(file_path):
+    import pandas as pd
+    header = pd.read_excel(file_path, nrows=0)
+    if "peso" in header.columns:
+        df = pd.read_excel(file_path, usecols="A:H")
+    else:
+        df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
+    return df
+
 def formatar_valor(v):
     try:
         if isinstance(v, pd.Series):
@@ -27,37 +36,6 @@ def formatar_valor(v):
         return f"{float(v):.2f}"
     except Exception:
         return "0.00"
-
-def encontrar_linha_cabecalho_excel(filepath, colunas_esperadas):
-    import pandas as pd
-    for i in range(10):
-        try:
-            df_temp = pd.read_excel(filepath, header=i)
-            cols = [normalizar_coluna(str(c)) for c in df_temp.columns]
-            if all(col in cols for col in colunas_esperadas):
-                return i
-        except Exception:
-            continue
-    return 0
-
-def encontrar_linha_cabecalho_csv(filepath, colunas_esperadas):
-    import pandas as pd
-    for i in range(10):
-        try:
-            df_temp = pd.read_csv(filepath, header=i, sep=None, engine='python')
-            cols = df_temp.columns[:7]  # Seleciona colunas A-G (índices 0 a 6)
-            df_temp = df_temp[cols].copy()
-            if all(col in cols for col in colunas_esperadas):
-                return i
-        except Exception:
-            continue
-    return 0
-
-def normalizar_coluna(nome):
-    return ''.join(
-        c for c in unicodedata.normalize('NFD', nome)
-        if unicodedata.category(c) != 'Mn'
-    ).lower().replace(' ', '')
 
 STYLE_OPTIONS = {
     "classic": "classic",
@@ -78,7 +56,6 @@ class GerenciadorPesosAgendamento:
         self.carregar_pesos()
 
     def carregar_pesos(self):
-        """Carrega pesos do arquivo JSON com tratamento de erros."""
         try:
             with open(self.arquivo_pesos, "r", encoding="utf-8") as f:
                 dados = json.load(f)
@@ -90,14 +67,13 @@ class GerenciadorPesosAgendamento:
             self.salvar_pesos()
 
     def salvar_pesos(self):
-        """Salva pesos no arquivo JSON."""
         with open(self.arquivo_pesos, "w", encoding="utf-8") as f:
             json.dump(dict(self.pesos), f, indent=4)
 
     def atualizar_peso(self, tipo_agendamento, novo_peso):
         try:
             self.pesos[tipo_agendamento] = float(novo_peso)
-            self.salvar_pesos()  # Salva automaticamente após atualizar
+            self.salvar_pesos()
             return True
         except ValueError:
             return False
@@ -127,7 +103,7 @@ class SplashScreen(tk.Toplevel):
         label.pack(pady=(10, 20))
         self.progress = ttk.Progressbar(frame, mode="indeterminate", bootstyle="info-striped", length=340)
         self.progress.pack(pady=(0, 10))
-        self.progress.start(12)  # velocidade da animação
+        self.progress.start(12)
 
     def close(self):
         if self.progress:
@@ -142,15 +118,9 @@ class ExcelAnalyzerApp:
         self.root.title("Sistema de Análise e Produtividade")
         self.root.geometry("1200x800")
         self.df = None
-        self.colunas_norm = {
-            "usuario": None,
-            "agendamento": None,
-            "datacriacao": None
-        }
         self.tipos_agendamento_unicos = []
-        self.coluna_agendamento = "Agendamento"
+        self.coluna_agendamento = "Data criação"
         self.style = ttk.Style()
-        style = ttk.Style()
         self.style.configure('TNotebook.Tab', font=('Segoe UI', 14, 'bold'), padding=[24, 8])
         self.style.configure('Pesos.Treeview', font=('Segoe UI', 14))
         self.style.configure('Pesos.Treeview.Heading', font=('Segoe UI', 15, 'bold'))
@@ -158,6 +128,7 @@ class ExcelAnalyzerApp:
         self.style.configure('Relatorio.Treeview.Heading', font=('Segoe UI', 15, 'bold'))
         self.style.configure('Semana.Treeview', font=('Segoe UI', 13))
         self.style.configure('Semana.Treeview.Heading', font=('Segoe UI', 14, 'bold'))
+
         self.frame_kpis = ttk.Frame(self.root)
         self.frame_kpis.pack(fill="x", padx=10, pady=8)
         self.kpi_labels = {}
@@ -168,17 +139,16 @@ class ExcelAnalyzerApp:
                 frame,
                 text="--",
                 font=("Segoe UI", 16, "bold"),
-                anchor="center",  # centraliza vertical e horizontalmente
-                justify="center"  # centraliza múltiplas linhas, se houver
+                anchor="center",
+                justify="center"
             )
-            label.pack(expand=True, fill="both")  # faz o label ocupar todo o espaço do frame
+            label.pack(expand=True, fill="both")
             self.kpi_labels[kpi] = label
-        self.inicializando = True  # Flag para controle de inicialização
+
         self.notebook = ttk.Notebook(root, bootstyle=PRIMARY)
         self.notebook.pack(fill="both", expand=True)
         self.criar_aba_analise_graficos()
         self.criar_aba_config_pesos()
-        self.criar_aba_relatorios()
         self.criar_aba_produtividade_semana()
         self.criar_aba_comparacao()
         self.criar_aba_comparacao_meses()
@@ -186,25 +156,47 @@ class ExcelAnalyzerApp:
         self.carregar_configuracoes()
         self.gerenciador_pesos = GerenciadorPesosAgendamento()
         self.carregar_pesos_automaticamente()
+        self.carregar_dados_mensais_automaticamente()
+        self.inicializando = False
+        self.atualizar_treeview()
+        self.atualizar_kpis()
+        self.atualizar_checkboxes_usuarios()
+        self.atualizar_tabela_pesos()
+        self.gerar_tabela_semana()
+        if hasattr(self, "atualizar_comboboxes_comparacao"):
+            self.atualizar_comboboxes_comparacao()
+        if hasattr(self, "comparar_meses"):
+            self.comparar_meses(mostrar_popup=False)
         self.gerenciador_pesos.carregar_pesos()
         self.root.protocol("WM_DELETE_WINDOW", self.fechar_programa)
-        self.inicializando = False  # Finaliza inicialização
-        self.primeira_execucao = True  # Nova flag para controle pós-inicialização
+        self.primeira_execucao = True
+        if hasattr(self, "comparar_todos_meses"):
+            self.comparar_todos_meses()
 
     @staticmethod
     def chave_mes_ano(mes_ano):
-        meses_pt = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 
-                    'jul', 'ago', 'set', 'out', 'nov', 'dez']
-        if mes_ano.lower() == "atual":
-            # Garante que "Atual" sempre aparece por último
-            return (9999, 13)
+        meses_pt = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
         try:
+            if not mes_ano or "/" not in mes_ano:
+                raise ValueError("Formato inválido")
             mes_abrev, ano = mes_ano.split('/')
             mes_num = meses_pt.index(mes_abrev.lower()) + 1
             return (int(ano), mes_num)
         except Exception as e:
             print(f"Erro ao converter '{mes_ano}': {str(e)}")
-            return (0, 0)  # Coloca itens inválidos no início
+            return (0, 0)
+
+    def atualizar_tipos_agendamento_unicos(self):
+        """
+        Atualiza a lista de tipos únicos de agendamento a partir do DataFrame consolidado (self.df),
+        garantindo que todos os tipos presentes em todos os meses carregados apareçam na tabela de pesos.
+        """
+        if self.df is not None and "Agendamento" in self.df.columns:
+            tipos_unicos = self.df["Agendamento"].dropna().unique()
+            tipos_limpos = [re.sub(r'\s*\(.*?\)', '', str(x)).strip() for x in tipos_unicos]
+            self.tipos_agendamento_unicos = sorted(set(tipos_limpos))
+        else:
+            self.tipos_agendamento_unicos = []
 
     def testar_extracao_meses(self):
         pasta = "dados_mensais"
@@ -212,8 +204,8 @@ class ExcelAnalyzerApp:
             print("Pasta dados_mensais não existe!")
             return
         for arq in os.listdir(pasta):
-            caminho = os.path.join(pasta, arq)
-            print(arq, self.extrair_mes_ano_do_arquivo(caminho))
+            file_path = os.path.join(pasta, arq)
+            print(arq, self.extrair_mes_ano_do_arquivo(file_path))
 
     def limpar_dados_anteriores(self):
         from tkinter import messagebox
@@ -228,10 +220,62 @@ class ExcelAnalyzerApp:
         pasta_dados_mensais = "dados_mensais"
         if os.path.exists(pasta_dados_mensais):
             for arquivo in os.listdir(pasta_dados_mensais):
-                caminho_arquivo = os.path.join(pasta_dados_mensais, arquivo)
-                if os.path.isfile(caminho_arquivo):
-                    os.remove(caminho_arquivo)
+                file_path_arquivo = os.path.join(pasta_dados_mensais, arquivo)
+                if os.path.isfile(file_path_arquivo):
+                    os.remove(file_path_arquivo)
+
+        # Limpa o DataFrame principal
+        self.df = None
+
+        # Atualiza KPIs e interfaces dependentes
+        self.atualizar_kpis()
         self.atualizar_comboboxes_comparacao()
+        self.atualizar_treeview()
+        self.atualizar_checkboxes_usuarios()
+        self.atualizar_tabela_pesos()
+        self.gerar_tabela_semana()
+        if hasattr(self, "comparar_meses"):
+            self.comparar_meses(mostrar_popup=False)
+
+    def carregar_dados_mensais_automaticamente(self):
+        pasta = "dados_mensais"
+        arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(('.xlsx'))] if os.path.exists(pasta) else []
+        if not arquivos:
+            return
+        dfs = []
+        for arquivo in arquivos:
+            file_path = os.path.join(pasta, arquivo)
+            try:
+                df = carregar_planilha(file_path)
+                if "Usuário" in df.columns:
+                    df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+
+
+                col_agendamento = next((col for col in df.columns if col == "Agendamento"), None)
+                if "peso" not in df.columns:
+                    if col_agendamento:
+                        tipo_limpo = df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+                        df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+                    else:
+                        df["peso"] = 1.0
+
+                df = df.loc[:, ~df.columns.duplicated()]
+                dfs.append(df)
+            except Exception as e:
+                print(f"Erro ao carregar {arquivo}: {e}")
+
+        if dfs:
+            self.df = pd.concat(dfs, ignore_index=True)
+            self.atualizar_tipos_agendamento_unicos()
+            self.atualizar_treeview()
+            self.atualizar_kpis()
+            self.atualizar_checkboxes_usuarios()
+            self.atualizar_tabela_pesos()
+            self.gerar_tabela_semana()
+            if hasattr(self, "atualizar_comboboxes_comparacao"):
+                self.atualizar_comboboxes_comparacao()
+            if hasattr(self, "comparar_meses"):
+                self.comparar_meses(mostrar_popup=False)
 
     def salvar_pesos_interface(self):
         try:
@@ -239,7 +283,7 @@ class ExcelAnalyzerApp:
                 tipo, peso_str = self.tree_pesos.item(item, 'values')
                 novo_peso = float(peso_str)
                 self.gerenciador_pesos.atualizar_peso(tipo, novo_peso)
-                self.gerenciador_pesos.salvar_pesos()
+            self.gerenciador_pesos.salvar_pesos()
             if getattr(self, 'inicializando', False):
                 return
             messagebox.showinfo("Sucesso", "Pesos salvos com sucesso!")
@@ -254,60 +298,48 @@ class ExcelAnalyzerApp:
         self.carregar_pesos_automaticamente()
 
     def salvar_dados_mes(self):
-        import os
-        import re
-        import pandas as pd
-        from datetime import datetime
-
         if self.df is None:
             return
 
         df_save = self.df.copy()
-        colunas_disponiveis = list(df_save.columns)
-        col_agendamento = next((col for col in colunas_disponiveis if normalizar_coluna(col) == "agendamento"), None)
-        if col_agendamento:
-            pontuacoes = []
-            for _, row in df_save.iterrows():
-                if pd.notna(row[col_agendamento]):
-                    tipo = re.sub(r'[\r\n]', '', str(row[col_agendamento]).strip())
-                    tipo_limpo = re.sub(r'\s*\(.*?\)', '', tipo).strip()
-                    peso = self.gerenciador_pesos.obter_peso(tipo_limpo)
-                    pontuacoes.append(peso)
-                else:
-                    pontuacoes.append(0)
-            df_save["Peso"] = pontuacoes
 
-        # Remove a coluna Peso antes de salvar para evitar dados obsoletos
-        if "Peso" in df_save.columns:
-            df_save = df_save.drop(columns=["Peso"])
-
-        # Identifica mês/ano
-        colunas_disponiveis = list(df_save.columns)
-        col_data = next((col for col in colunas_disponiveis if normalizar_coluna(col) == "datacriacao"), None)
-        if col_data is not None:
-            datas_validas = pd.to_datetime(df_save[col_data], errors="coerce").dropna()
-            if not datas_validas.empty:
-                mes = datas_validas.dt.month.mode()[0]
-                ano = datas_validas.dt.year.mode()[0]
-            else:
-                messagebox.showerror("Erro", "A coluna 'Data criação' está vazia ou inválida. Não é possível salvar o mês corretamente.")
-                return
+        # Garante coluna "peso" atualizada
+        col_agendamento = "Agendamento"
+        if col_agendamento in df_save.columns:
+            tipo_limpo = df_save[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+            df_save["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
         else:
-            messagebox.showerror("Erro", "A coluna 'Data criação' não foi encontrada. Não é possível salvar o mês corretamente.")
+            df_save["peso"] = 1.0
+
+        # Identifica mês/ano para salvar
+        col_data = "Data criação"
+        datas_validas = pd.to_datetime(df_save[col_data], errors="coerce").dropna() if col_data in df_save.columns else []
+        if not datas_validas.empty:
+            mes = datas_validas.dt.month.mode()[0]
+            ano = datas_validas.dt.year.mode()[0]
+        else:
+            messagebox.showerror("Erro", "A coluna 'Data criação' está vazia ou inválida. Não é possível salvar o mês corretamente.")
             return
 
         pasta = "dados_mensais"
         if not os.path.exists(pasta):
             os.makedirs(pasta)
-        nome_arquivo = f"produtividade_{ano}-{mes:02d}.xlsx"
-        caminho = os.path.join(pasta, nome_arquivo)
-        df_save.to_excel(caminho, index=False)
+        nome_arquivo = os.path.basename(self.file_path.get())
+        file_path = os.path.join(pasta, nome_arquivo)
 
-        # Atualiza comboboxes de comparação, se necessário
+        colunas_relevantes = [
+            "Tipo", "Código", "Nro. processo", "Usuário", "Data criação", "Status", "Agendamento", "peso"
+        ]
+        for col in colunas_relevantes:
+            if col not in df_save.columns:
+                df_save[col] = ""
+        df_save = df_save[colunas_relevantes]
+        df_save.to_excel(file_path, index=False)
+
         if hasattr(self, 'atualizar_comboboxes_comparacao'):
             self.atualizar_comboboxes_comparacao()
 
-        return caminho
+        return file_path
 
     def carregar_pesos_automaticamente(self):
         """Carrega pesos do arquivo JSON e força atualização."""
@@ -318,9 +350,7 @@ class ExcelAnalyzerApp:
 
         # Atualiza tabelas SEM mostrar popups
         if hasattr(self, 'tree_comp_meses'):
-            self.comparar_meses(mostrar_popup=False)  # <--- Adicione mostrar_popup=False
-        if hasattr(self, 'tree_relatorio'):
-            self.gerar_relatorio_produtividade()
+            self.comparar_meses(mostrar_popup=False)
 
     def salvar_configuracoes(self):
         config = {
@@ -340,17 +370,13 @@ class ExcelAnalyzerApp:
                 self.fonte_var.set(config.get("fonte", "Pequeno"))
                 self.export_path_var.set(config.get("export_path", ""))
                 self.auto_save_var.set(config.get("auto_save", True))
-                self.atualizar_checkboxes_usuarios(),
-                self.gerar_relatorio_produtividade()
+            self.atualizar_checkboxes_usuarios()
 
     def fechar_programa(self):
-        # Bloqueia popups durante o fechamento
-        self.inicializando = True  # <--- Adicione esta linha
-
+        self.inicializando = True
         if getattr(self, 'dados_carregados', False):
             self.salvar_pesos_automaticamente()
             self.salvar_configuracoes()
-
         self.root.destroy()
 
     def criar_aba_analise_graficos(self):
@@ -363,6 +389,7 @@ class ExcelAnalyzerApp:
         ttk.Button(frame_arquivo, text="Procurar", command=self.browse_file, bootstyle=PRIMARY).pack(side="left", padx=5)
         self.label_meses_carregados = ttk.Label(frame_arquivo, text="Meses carregados: --", font=("Segoe UI", 11, "bold"))
         self.label_meses_carregados.pack(side="left", padx=15)
+
         painel_h = ttk.PanedWindow(frame_analise, orient="horizontal")
         painel_h.pack(fill="both", expand=True, padx=10, pady=10)
         frame_esquerdo = ttk.Frame(painel_h)
@@ -371,9 +398,7 @@ class ExcelAnalyzerApp:
         self.treeview.pack(fill="both", expand=True, padx=5, pady=5)
         frame_controles = ttk.LabelFrame(frame_esquerdo, text="Configurações do Gráfico", padding=10, bootstyle=INFO)
         frame_controles.pack(fill="x", padx=5, pady=5)
-        ttk.Label(frame_controles, text="Coluna para análise:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.combo_colunas = ttk.Combobox(frame_controles, state="readonly", width=30, bootstyle=INFO)
-        self.combo_colunas.grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ttk.Label(frame_controles, text="Coluna para análise: Usuário").grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="w")
         ttk.Label(frame_controles, text="Tipo de gráfico:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.graph_type = ttk.StringVar(value="barras horizontais")
         self.graph_type_map = {
@@ -383,24 +408,16 @@ class ExcelAnalyzerApp:
             "em linha": "line"
         }
         graph_combo = ttk.Combobox(
-            frame_controles,
-            textvariable=self.graph_type,
-            values=list(self.graph_type_map.keys()),
-            state="readonly",
-            width=15,
-            bootstyle=INFO
+            frame_controles, textvariable=self.graph_type,
+            values=list(self.graph_type_map.keys()), state="readonly", width=15, bootstyle=INFO
         )
         graph_combo.grid(row=1, column=1, padx=5, pady=5, sticky="w")
         ttk.Label(frame_controles, text="Estilo visual:").grid(row=2, column=0, padx=5, pady=5, sticky="w")
         self.style_var = ttk.StringVar(value="Solarize_Light2")
         self.style_map = STYLE_OPTIONS
         style_combo = ttk.Combobox(
-            frame_controles,
-            textvariable=self.style_var,
-            values=list(self.style_map.keys()),
-            state="readonly",
-            width=20,
-            bootstyle=INFO
+            frame_controles, textvariable=self.style_var,
+            values=list(self.style_map.keys()), state="readonly", width=20, bootstyle=INFO
         )
         style_combo.grid(row=2, column=1, padx=5, pady=5, sticky="w")
         ttk.Label(frame_controles, text="Título:").grid(row=3, column=0, padx=5, pady=5, sticky="w")
@@ -420,28 +437,26 @@ class ExcelAnalyzerApp:
         if os.path.exists(pasta):
             meses = []
             for arq in os.listdir(pasta):
-                caminho = os.path.join(pasta, arq)
-                mes_ano = self.extrair_mes_ano_do_arquivo(caminho)
+                file_path = os.path.join(pasta, arq)
+                mes_ano = self.extrair_mes_ano_do_arquivo(file_path)
                 if mes_ano != "Mês desconhecido":
                     meses.append(mes_ano)
-            if meses:
-                self.label_meses_carregados.config(text="Meses carregados: " + ", ".join(sorted(meses, key=self.chave_mes_ano)))
+            meses_validos = [m for m in meses if m and "/" in str(m)]
+            if meses_validos:
+                self.label_meses_carregados.config(text="Meses carregados: " + ", ".join(sorted(meses_validos, key=self.chave_mes_ano)))
             else:
                 self.label_meses_carregados.config(text="Meses carregados: --")
-        else:
-            self.label_meses_carregados.config(text="Meses carregados: --")
 
     def criar_aba_config_pesos(self):
         frame_pesos = ttk.Frame(self.notebook)
         self.notebook.add(frame_pesos, text="Configuração de Pesos")
-
         ttk.Label(
             frame_pesos,
             text="Pesos para cada tipo de Agendamento:",
             font=("Segoe UI", 11, "bold")
         ).pack(anchor="w", padx=10, pady=(10,0))
 
-        # Frame para centralizar e expandir a tabela
+        # Frame para tabela e scrollbar
         frame_tabela_pesos = ttk.Frame(frame_pesos)
         frame_tabela_pesos.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -456,9 +471,18 @@ class ExcelAnalyzerApp:
         self.tree_pesos.heading("Peso", text="Peso Atribuído", command=lambda: self.ordenar_treeview_pesos("Peso", False))
         self.tree_pesos.column("Tipo", width=400, anchor="w", stretch=True)
         self.tree_pesos.column("Peso", width=100, anchor="center", stretch=True)
-        self.tree_pesos.pack(fill="both", expand=True)
 
-        # Controles para atualizar pesos
+        # Barra de rolagem vertical
+        scrollbar = ttk.Scrollbar(frame_tabela_pesos, orient="vertical", command=self.tree_pesos.yview)
+        self.tree_pesos.configure(yscrollcommand=scrollbar.set)
+
+        # Layout com grid para alinhamento correto
+        self.tree_pesos.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        frame_tabela_pesos.rowconfigure(0, weight=1)
+        frame_tabela_pesos.columnconfigure(0, weight=1)
+
+        # Controles de edição de peso
         frame_controles = ttk.Frame(frame_pesos)
         frame_controles.pack(fill="x", padx=10, pady=5)
         ttk.Label(frame_controles, text="Novo Peso:").pack(side="left")
@@ -471,7 +495,6 @@ class ExcelAnalyzerApp:
             bootstyle=SUCCESS
         ).pack(side="left")
 
-        # Botões para salvar/carregar/restaurar configuração
         frame_config = ttk.Frame(frame_pesos)
         frame_config.pack(fill="x", padx=10, pady=5)
         ttk.Button(
@@ -493,26 +516,41 @@ class ExcelAnalyzerApp:
             bootstyle=WARNING
         ).pack(side="left", padx=5)
 
+
     def criar_aba_configuracoes(self):
+        # Frame principal da aba
         frame_config = ttk.Frame(self.notebook)
         self.notebook.add(frame_config, text="Configurações")
 
-        # Variáveis de controle
+        # Canvas + Scrollbar para rolagem vertical
+        canvas = tk.Canvas(frame_config, borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(frame_config, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Variáveis de configuração
         self.tema_var = ttk.StringVar(value="flatly")
         self.fonte_var = ttk.StringVar(value="Pequeno")
         self.export_path_var = ttk.StringVar(value="")
         self.auto_save_var = ttk.BooleanVar(value=True)
 
-        # Tema do programa
+        # Tema
+        ttk.Label(scrollable_frame, text="Tema do programa:", font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=16, pady=(16, 4))
         temas = ["morph", "flatly", "darkly", "cyborg", "journal", "solar", "vapor", "superhero"]
-        ttk.Label(frame_config, text="Tema do programa:", font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=16, pady=(16, 4))
         combo_tema = ttk.Combobox(
-            frame_config,
-            textvariable=self.tema_var,
-            values=temas,
-            state="readonly",
-            width=20,
-            bootstyle=INFO
+            scrollable_frame, textvariable=self.tema_var,
+            values=temas, state="readonly", width=20, bootstyle=INFO
         )
         combo_tema.pack(anchor="w", padx=16, pady=(0, 16))
 
@@ -520,32 +558,22 @@ class ExcelAnalyzerApp:
             self.style.theme_use(self.tema_var.get())
         combo_tema.bind("<<ComboboxSelected>>", mudar_tema)
 
-        # Pasta padrão para exportação
-        ttk.Label(frame_config, text="Pasta padrão para exportação:").pack(anchor="w", padx=16, pady=(8, 2))
-        ttk.Entry(frame_config, textvariable=self.export_path_var, width=40).pack(anchor="w", padx=16)
+        # Pasta de exportação
+        ttk.Label(scrollable_frame, text="Pasta padrão para exportação:").pack(anchor="w", padx=16, pady=(8, 2))
+        ttk.Entry(scrollable_frame, textvariable=self.export_path_var, width=40).pack(anchor="w", padx=16)
         ttk.Button(
-            frame_config,
-            text="Procurar",
-            command=self.selecionar_pasta_exportacao,
-            bootstyle=SECONDARY
+            scrollable_frame, text="Procurar",
+            command=self.selecionar_pasta_exportacao, bootstyle=SECONDARY
         ).pack(anchor="w", padx=16, pady=(2, 8))
 
-        # Tamanho da fonte
-        ttk.Label(frame_config, text="Tamanho da fonte:").pack(anchor="w", padx=16, pady=(8, 2))
-        self.fonte_var = ttk.StringVar(value="Pequeno")
+        # Fonte
+        ttk.Label(scrollable_frame, text="Tamanho da fonte:").pack(anchor="w", padx=16, pady=(8, 2))
         combo_fonte = ttk.Combobox(
-            frame_config,
-            textvariable=self.fonte_var,
-            values=["Pequeno", "Médio", "Grande"],
-            state="readonly"
+            scrollable_frame, textvariable=self.fonte_var,
+            values=["Pequeno", "Médio", "Grande"], state="readonly"
         )
         combo_fonte.pack(anchor="w", padx=16)
-
-        font_sizes = {
-            "Pequeno": 10,
-            "Médio": 14,
-            "Grande": 18
-        }
+        font_sizes = {"Pequeno": 10, "Médio": 14, "Grande": 18}
 
         def mudar_fonte(event=None):
             tamanho = font_sizes.get(self.fonte_var.get(), 10)
@@ -556,23 +584,23 @@ class ExcelAnalyzerApp:
             self.style.configure('Relatorio.Treeview.Heading', font=('Segoe UI', tamanho+1, 'bold'))
             self.style.configure('Semana.Treeview', font=('Segoe UI', tamanho-1))
             self.style.configure('Semana.Treeview.Heading', font=('Segoe UI', tamanho, 'bold'))
-
         combo_fonte.bind("<<ComboboxSelected>>", mudar_fonte)
         mudar_fonte()
 
-        # Salvar configurações automaticamente
+        # Auto save
         ttk.Checkbutton(
-            frame_config,
+            scrollable_frame,
             text="Salvar configurações automaticamente ao sair",
             variable=self.auto_save_var
         ).pack(anchor="w", padx=16, pady=(0, 2))
 
         # Restaurar padrão
         ttk.Button(
-            frame_config,
+            scrollable_frame,
             text="Restaurar configurações padrão",
             command=self.restaurar_configuracoes_padrao
         ).pack(anchor="w", padx=16, pady=(16, 8))
+
 
     def restaurar_configuracoes_padrao(self):
         if getattr(self, 'inicializando', False):
@@ -583,9 +611,12 @@ class ExcelAnalyzerApp:
         )
         if not resposta:
             return
-        # ... resto do método ...
-        if getattr(self, 'inicializando', False):
-            return
+        self.tema_var.set("flatly")
+        self.fonte_var.set("Pequeno")
+        self.export_path_var.set("")
+        self.auto_save_var.set(True)
+        self.style.theme_use("flatly")
+        self.salvar_configuracoes()
         messagebox.showinfo("Configurações", "Configurações restauradas para o padrão!")
 
     def selecionar_pasta_exportacao(self):
@@ -593,35 +624,12 @@ class ExcelAnalyzerApp:
         if pasta:
             self.export_path_var.set(pasta)
 
-    def criar_aba_relatorios(self):
-        frame_relatorios = ttk.Frame(self.notebook)
-        self.notebook.add(frame_relatorios, text="Relatórios de Produtividade")
-        frame_filtros = ttk.LabelFrame(frame_relatorios, text="Filtros", padding=10, bootstyle=INFO)
-        frame_filtros.pack(fill="x", padx=10, pady=5)
-        ttk.Label(frame_filtros, text="Coluna de usuário:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        ttk.Label(frame_filtros, text="Usuário").grid(row=0, column=1, padx=5, pady=5, sticky="w")
-        ttk.Button(frame_filtros, text="Gerar Relatório de Produtividade", command=self.gerar_relatorio_produtividade, bootstyle=SUCCESS).grid(row=1, column=0, padx=5, pady=5)
-        ttk.Button(frame_filtros, text="Visualizar Gráficos de Produtividade", command=self.visualizar_graficos_produtividade, bootstyle=PRIMARY).grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(frame_filtros, text="Exportar para Excel", command=self.exportar_relatorio_excel, bootstyle=SECONDARY).grid(row=1, column=2, padx=5, pady=5)
-        ttk.Button(frame_filtros, text="Exportar para PDF", command=self.exportar_relatorio_pdf, bootstyle=SECONDARY).grid(row=1, column=3, padx=5, pady=5)
-        self.tree_relatorio = ttk.Treeview(frame_relatorios, columns=("usuario", "Pontuação"), show="headings", bootstyle=INFO)
-        self.tree_relatorio.heading("usuario", text="usuario", command=lambda: self.ordenar_treeview_relatorio("usuario", False))
-        self.tree_relatorio.heading("Pontuação", text="Pontuação Total", command=lambda: self.ordenar_treeview_relatorio("Pontuação", False))
-        self.tree_relatorio.column("usuario", width=200, anchor="center", stretch=False)
-        self.tree_relatorio.column("Pontuação", width=150, anchor="center", stretch=False)
-        self.tree_relatorio.pack(fill="both", expand=True, padx=10, pady=10)
-        self.tree_relatorio.column("usuario", width=200, anchor="w")
-        for col in self.tree_relatorio["columns"][1:]:
-            self.tree_relatorio.column(col, width=120, anchor="center")
-
     def criar_aba_produtividade_semana(self):
         frame_semana = ttk.Frame(self.notebook)
         self.notebook.add(frame_semana, text="Produtividade por Dia da Semana")
         frame_top = ttk.Frame(frame_semana)
         frame_top.pack(fill="x", padx=10, pady=10)
-        ttk.Label(frame_top, text="Coluna de usuário: Usuário").pack(side="left", padx=5)
-        ttk.Label(frame_top, text="Coluna de data: Data criação").pack(side="left", padx=20)
-        ttk.Button(frame_top, text="Gerar Tabela", command=self.gerar_tabela_semana, bootstyle=SUCCESS).pack(side="left", padx=20)
+        ttk.Button(frame_top, text="Atualizar Tabela", command=self.gerar_tabela_semana, bootstyle=SUCCESS).pack(side="left")
         self.tree_semana = ttk.Treeview(frame_semana, show="headings", bootstyle=INFO)
         self.tree_semana.pack(fill="both", expand=True, padx=10, pady=10)
         self.labelframe_ranking = ttk.LabelFrame(frame_semana, text="Produtividade geral por dia da semana", padding=16, bootstyle=INFO)
@@ -634,160 +642,128 @@ class ExcelAnalyzerApp:
         self.notebook.add(frame_comp, text="Comparação")
         self.frame_check_users = ttk.LabelFrame(frame_comp, text="Selecione usuários para comparar", padding=10, bootstyle=ttk.INFO)
         self.frame_check_users.pack(fill="x", padx=10, pady=10)
-
         ttk.Button(self.frame_check_users, text="Atualizar Lista de Usuários", command=self.atualizar_checkboxes_usuarios, bootstyle=ttk.SECONDARY).pack(anchor="w", pady=(0,5))
-
         frame_btn = ttk.Frame(frame_comp)
         frame_btn.pack(fill="x", padx=10, pady=5)
-
-        ttk.Button(
-            frame_btn,
-            text="Comparar",
-            command=self.comparar_produtividade_usuarios,
-            bootstyle=SUCCESS
-        ).pack(side="left", padx=5)
-
-        ttk.Button(
-            frame_btn,
-            text="Comparar Todos",
-            command=self.comparar_todos_meses,
-            bootstyle=SUCCESS
-        ).pack(side="left", padx=5)
-
+        ttk.Button(frame_btn, text="Comparar Selecionados", command=self.comparar_produtividade_usuarios, bootstyle=SUCCESS).pack(side="left", padx=5)
+        ttk.Button(frame_btn, text="Comparar Todos", command=self.comparar_todos_meses, bootstyle=SUCCESS).pack(side="left", padx=5)
         frame_tabela = ttk.LabelFrame(frame_comp, text="Comparação de Usuários", padding=10, bootstyle=ttk.INFO)
         frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Inicializa o Sheet (tksheet) para comparação de usuários
         self.sheet_comp = Sheet(
             frame_tabela,
-            data=[[""]],  # Inicialmente vazio
-            headers=["usuario"],
+            data=[[""]],
+            headers=["Usuário"],
             theme="light blue",
             show_x_scrollbar=True,
             show_y_scrollbar=True,
             height=400
         )
         self.sheet_comp.pack(fill="both", expand=True)
-
         self.check_vars_usuarios = dict()
         self.checkbuttons_usuarios = dict()
         self.atualizar_checkboxes_usuarios()
 
     def comparar_produtividade_usuarios(self):
-        messagebox.showinfo("Info", "Função ainda não implementada.")
-
+        # Coleta usuários selecionados
+        usuarios = [u for u, var in self.check_vars_usuarios.items() if var.get()]
+        if not usuarios:
+            messagebox.showwarning("Aviso", "Selecione pelo menos um usuário para comparar!")
+            return
+        if self.df is None or self.df.empty:
+            messagebox.showwarning("Aviso", "Nenhum dado carregado!")
+            return
+        col_usuario = "Usuário"
+        col_peso = "peso"
+        col_mes = "Data criação"
+        df = self.df.copy()
+        if col_mes in df.columns:
+            df[col_mes] = pd.to_datetime(df[col_mes], errors="coerce")
+            df["Mes"] = df[col_mes].dt.strftime("%b/%Y")
+        else:
+            df["Mes"] = ""
+        # CORRIGIDO:
+        meses_validos = [
+            m for m in pd.Series(df["Mes"].unique()).dropna()
+            if isinstance(m, str) and "/" in m
+        ]
+        meses = sorted(meses_validos, key=ExcelAnalyzerApp.chave_mes_ano)
+        dados = []
+        for usuario in usuarios:
+            linha = [usuario]
+            for mes in meses:
+                prod = df[(df[col_usuario] == usuario) & (df["Mes"] == mes)][col_peso].sum() if col_peso in df.columns else 0.0
+                linha.append(f"{float(prod):.2f}")
+            linha.append(f"{float(df[df[col_usuario] == usuario][col_peso].sum()):.2f}")
+            dados.append(linha)
+        headers = ["Usuário"] + meses + ["Total"]
+        self.sheet_comp.headers(headers)
+        self.sheet_comp.set_sheet_data(dados)
+        self.sheet_comp.set_all_column_widths(120)
+        self.sheet_comp.column_width(0, 200)
 
     def atualizar_comboboxes_comparacao(self):
-        import os
         pasta = "dados_mensais"
         arquivos = [arq for arq in os.listdir(pasta)] if os.path.exists(pasta) else []
-        arquivos = [arq for arq in arquivos if arq.endswith(".xlsx") or arq.endswith(".csv")]
+        arquivos = [arq for arq in arquivos if arq.endswith(".xlsx")]
         opcoes_amigaveis = []
         for arq in arquivos:
-            caminho = os.path.join(pasta, arq)
-            mes_ano = self.extrair_mes_ano_do_arquivo(caminho)
+            file_path = os.path.join(pasta, arq)
+            mes_ano = self.extrair_mes_ano_do_arquivo(file_path)
             opcoes_amigaveis.append(mes_ano)
+        opcoes_amigaveis = [m for m in opcoes_amigaveis if m and "/" in str(m)]
         self.mapa_arquivo_meses = dict(zip(opcoes_amigaveis, arquivos))
-
-        # Atualiza o Treeview
         if hasattr(self, 'listbox_meses'):
             self.listbox_meses.delete(0, 'end')
             for opcao in opcoes_amigaveis:
                 self.listbox_meses.insert('end', opcao)
 
     def criar_aba_comparacao_meses(self):
-        import os
-        from tksheet import Sheet
-
-        # Frame principal da aba
         frame_principal = ttk.Frame(self.notebook)
         self.notebook.add(frame_principal, text="Comparação de Meses")
-
-        # Listar arquivos disponíveis
         pasta = "dados_mensais"
         arquivos = [arq for arq in os.listdir(pasta)] if os.path.exists(pasta) else []
-        arquivos = [arq for arq in arquivos if arq.endswith((".xlsx", ".csv"))]
-
+        arquivos = [arq for arq in arquivos if arq.endswith(".xlsx")]
         opcoes_amigaveis = []
         for arq in arquivos:
-            caminho = os.path.join(pasta, arq)
-            mes_ano = self.extrair_mes_ano_do_arquivo(caminho)
+            file_path = os.path.join(pasta, arq)
+            mes_ano = self.extrair_mes_ano_do_arquivo(file_path)
             opcoes_amigaveis.append(mes_ano)
+        opcoes_amigaveis = [m for m in opcoes_amigaveis if m and "/" in str(m)]
         self.mapa_arquivo_meses = dict(zip(opcoes_amigaveis, arquivos))
-
-        # Container principal
         frame_superior = ttk.Frame(frame_principal)
         frame_superior.pack(fill="x", padx=10, pady=10)
-
-        # Listbox para seleção múltipla
         ttk.Label(frame_superior, text="Selecione os meses para comparar:").pack(anchor="w")
         self.listbox_meses = tk.Listbox(
-            frame_superior, 
-            selectmode="multiple", 
-            height=8, 
-            exportselection=False,
-            font=("Segoe UI", 11)
+            frame_superior, selectmode="multiple", height=8, exportselection=False, font=("Segoe UI", 11)
         )
-        # Scrollbar
         scroll = ttk.Scrollbar(frame_superior, orient="vertical", command=self.listbox_meses.yview)
         scroll.pack(side="right", fill="y")
         self.listbox_meses.configure(yscrollcommand=scroll.set)
         for opcao in opcoes_amigaveis:
             self.listbox_meses.insert("end", opcao)
         self.listbox_meses.pack(fill="x", expand=True)
-
-        # Botões
         frame_botoes = ttk.Frame(frame_superior)
         frame_botoes.pack(fill="x", pady=10)
-
-        ttk.Button(
-            frame_botoes,
-            text="Comparar",
-            command=self.comparar_meses,
-            bootstyle=SUCCESS
-        ).pack(side="left", padx=5)
-
-        ttk.Button(
-            frame_botoes,
-            text="Comparar Todos",
-            command=self.comparar_todos_meses,
-            bootstyle=SUCCESS
-        ).pack(side="left", padx=5)
-
-        ttk.Button(
-            frame_botoes,
-            text="Excluir dados dos meses",
-            command=self.limpar_dados_anteriores,
-            bootstyle=DANGER
-        ).pack(side="right", padx=5)
-
-        # KPIs
+        ttk.Button(frame_botoes, text="Comparar", command=self.comparar_meses, bootstyle=SUCCESS).pack(side="left", padx=5)
+        ttk.Button(frame_botoes, text="Comparar Todos", command=self.comparar_todos_meses, bootstyle=SUCCESS).pack(side="left", padx=5)
+        ttk.Button(frame_botoes, text="Excluir dados dos meses", command=self.limpar_dados_anteriores, bootstyle=DANGER).pack(side="right", padx=5)
         self.kpi_comp_frame = ttk.Frame(frame_principal)
         self.kpi_comp_frame.pack(fill="x", padx=10, pady=5)
         self.kpi_comp_labels = {}
-
-        # Frame da tabela 
         frame_tabela = ttk.LabelFrame(frame_principal, text="Comparação Detalhada", padding=0)
         frame_tabela.pack(fill="both", expand=True, padx=10, pady=10)
-        frame_tabela.pack_propagate(False)  # Impede ajuste automático de tamanho
-
-        # IMPORTANTE: Usar o método grid em vez de place ou pack
-        frame_tabela.columnconfigure(0, weight=1)  # Coluna expandível
-        frame_tabela.rowconfigure(0, weight=1)     # Linha expandível
-
+        frame_tabela.pack_propagate(False)
+        frame_tabela.columnconfigure(0, weight=1)
+        frame_tabela.rowconfigure(0, weight=1)
         self.sheet_comp_meses = Sheet(
             frame_tabela,
             data=[[""]],
-            headers=["usuario"],
+            headers=["Usuário"],
             theme="light blue",
             show_x_scrollbar=True,
             show_y_scrollbar=True
         )
-
-        # Use grid com sticky="nsew" para ocupar todo o espaço
         self.sheet_comp_meses.grid(row=0, column=0, sticky="nsew")
-
-        # Outros bindings permanecem iguais
         self.sheet_comp_meses.enable_bindings((
             "single_select", "row_select", "column_width_resize", "double_click_column_resize",
             "arrowkeys", "right_click_popup_menu", "rc_select", "copy", "cut", "paste", "delete", "undo", "edit_cell",
@@ -805,30 +781,31 @@ class ExcelAnalyzerApp:
         self.sheet_comp_meses.sort_table(col, reverse=not crescente)
         self._ordem_crescente[col] = not crescente
 
+
     def verificar_arquivos_mensais(self):
         pasta = "dados_mensais"
         if os.path.exists(pasta):
             print("Arquivos encontrados em dados_mensais:")
             for arq in os.listdir(pasta):
-                caminho = os.path.join(pasta, arq)
-                print(f"- {arq} -> {self.extrair_mes_ano_do_arquivo(caminho)}")
+                file_path = os.path.join(pasta, arq)
+                print(f"- {arq} -> {self.extrair_mes_ano_do_arquivo(file_path)}")
         else:
             print("Pasta dados_mensais não existe!")
 
     def excluir_dados_comparacao(self):
-
-        if hasattr(self, 'treeview_comparacao_mes'):
-            for item in self.treeview_comparacao_mes.get_children():
-                self.treeview_comparacao_mes.delete(item)
-        
-        if hasattr(self, 'treeview_comparacao_mes2'):
-            for item in self.treeview_comparacao_mes2.get_children():
-                self.treeview_comparacao_mes2.delete(item)
+        # Limpa tabelas/visualizações de comparação de meses se existirem
+        if hasattr(self, 'sheet_comp_meses'):
+            self.sheet_comp_meses.set_sheet_data([[""]])
+            self.sheet_comp_meses.headers(["Usuário"])
+        if hasattr(self, 'kpi_comp_labels'):
+            for lbl in self.kpi_comp_labels.values():
+                lbl.destroy()
+            self.kpi_comp_labels = {}
 
     def sort_treeview_comp(self, col, reverse):
         items = [(self.tree_comp_meses.set(k, col), k) for k in self.tree_comp_meses.get_children('')]
         try:
-            items = [(float(val.replace(',', '')), k) for val, k in items]
+            items = [(float(val.replace(',', '.')), k) for val, k in items]
         except ValueError:
             items = [(val.lower(), k) for val, k in items]
         items.sort(reverse=reverse)
@@ -858,29 +835,33 @@ class ExcelAnalyzerApp:
 
         dados_meses = []
         for mes, arquivo in zip(meses_selecionados, arquivos_selecionados):
-            df = pd.read_excel(os.path.join("dados_mensais", arquivo))
-            df.columns = [normalizar_coluna(col) for col in df.columns]
-            col_usuario_mes = next((col for col in df.columns if normalizar_coluna(col) == "usuario"), None)
-            col_agendamento_mes = next((col for col in df.columns if normalizar_coluna(col) == "agendamento"), None)
-            if col_usuario_mes:
-                # NÃO filtra por col_agendamento_mes!
-                df = df.dropna(subset=[col_usuario_mes])
-                df[col_usuario_mes] = df[col_usuario_mes].astype(str).str.strip()
-                # Preenche Agendamento dos ACÓRDÃOS, caso ainda haja em '
-                if "tipo" in df.columns and "agendamento" in df.columns:
-                    df.loc[df["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
-                if col_agendamento_mes:
-                    df["TipoAgendamentoLimpo"] = df[col_agendamento_mes].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
-                    df["Peso"] = df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
+            file_path = os.path.join("dados_mensais", arquivo)
+            df = carregar_planilha(file_path)
+            if "Usuário" in df.columns:
+                df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+
+            col_usuario = "Usuário"
+            if col_usuario in df.columns:
+                # Padroniza nomes de usuários
+                df[col_usuario] = df[col_usuario].astype(str).str.strip().str.upper()
+
+            col_agendamento = "Agendamento"
+            if "peso" not in df.columns:
+                if col_agendamento in df.columns:
+                    tipo_limpo = df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+                    df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
                 else:
-                    df["Peso"] = 1.0
-                prod = df.groupby(col_usuario_mes)["Peso"].sum()
+                    df["peso"] = 1.0
+
+            if col_usuario in df.columns and "peso" in df.columns:
+                prod = df.groupby(col_usuario)["peso"].sum()
             else:
-                prod = pd.DataFrame(columns=["Peso"])
+                prod = pd.Series(dtype=float)
             dados_meses.append(prod)
 
+
         todos_usuarios = sorted({usuario for prod in dados_meses for usuario in prod.index})
-        colunas = ["usuario"] + meses_selecionados + ["Total"]
+        colunas = ["Usuário"] + meses_selecionados + ["Total"]
         dados_tabela = []
         celulas_verdes = []
         celulas_vermelhas = []
@@ -888,6 +869,8 @@ class ExcelAnalyzerApp:
         celulas_total = []
         celulas_zeradas = []
 
+        # Monta a tabela de dados e destaca top 3 com medalhas
+        top3_por_mes = {}
         for idx, usuario in enumerate(todos_usuarios):
             linha = [usuario]
             valores = []
@@ -901,70 +884,96 @@ class ExcelAnalyzerApp:
                 total += valor
 
             for i, v in enumerate(valores):
+                medalha = ""
+                # Calcula top 3 de cada mês (coluna)
+                if i not in top3_por_mes:
+                    valores_col = [(row, float(dados_meses[i].get(u, 0.0))) for row, u in enumerate(todos_usuarios)]
+                    top3 = sorted(valores_col, key=lambda x: x[1], reverse=True)[:3]
+                    top3_por_mes[i] = [row for row, _ in top3]
+                if idx in top3_por_mes[i]:
+                    pos = top3_por_mes[i].index(idx)
+                    if pos == 0:
+                        medalha = "🥇 "
+                    elif pos == 1:
+                        medalha = "🥈 "
+                    elif pos == 2:
+                        medalha = "🥉 "
                 if i == 0:
-                    linha.append(f"{v:.2f}")
+                    linha.append(f"{medalha}{v:.2f}")
                     if v == 0:
                         celulas_zeradas.append((idx, i+1))
                 else:
                     if v > valores[i-1]:
-                        linha.append(f"{v:.2f} ▲")
+                        linha.append(f"{medalha}{v:.2f} ▲")
                         celulas_verdes.append((idx, i+1))
                     elif v < valores[i-1]:
-                        linha.append(f"{v:.2f} ▼")
+                        linha.append(f"{medalha}{v:.2f} ▼")
                         celulas_vermelhas.append((idx, i+1))
                     else:
-                        linha.append(f"{v:.2f}")
+                        linha.append(f"{medalha}{v:.2f}")
                     if v == 0:
                         celulas_zeradas.append((idx, i+1))
             linha.append(f"{total:.2f}")
             dados_tabela.append(linha)
             celulas_total.append((idx, len(colunas)-1))
 
-        # Top 3 valores de cada mês (coluna)
-        for col in range(1, len(colunas)-1):
-            valores_col = [(row, float(dados_tabela[row][col].split()[0])) for row in range(len(dados_tabela))]
-            top3 = sorted(valores_col, key=lambda x: x[1], reverse=True)[:3]
-            for row, _ in top3:
-                celulas_top3.append((row, col))
-
         self.sheet_comp_meses.headers(colunas)
         self.sheet_comp_meses.set_sheet_data(dados_tabela)
         self.sheet_comp_meses.align_columns(columns=tuple(range(len(colunas))), align="center")
         self.sheet_comp_meses.align_header(columns=tuple(range(len(colunas))), align="center")
 
-
         # Coluna de total (azul claro)
         for row, col in celulas_total:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#e3f2fd", fg="#1565c0")
-        # Top 3 valores por mês (amarelo claro)
-        for row, col in celulas_top3:
-            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#fff9c4", fg="#795548")
         # Flecha para cima (verde forte)
         for row, col in celulas_verdes:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#d0f5e8", fg="green")
         # Flecha para baixo (vermelho forte)
         for row, col in celulas_vermelhas:
             self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#ffebee", fg="red")
-        # Valores zerados (cinza claro)
-        for row, col in celulas_zeradas:
-            self.sheet_comp_meses.highlight_cells(row=row, column=col, bg="#f1f3f4", fg="#888888")
 
         self.sheet_comp_meses.set_all_column_widths(120)
         self.sheet_comp_meses.column_width(0, 200)
 
-        # Atualiza KPIs (apenas totais, sem variação total)
-        totais = [float(prod["Peso"].sum()) if not prod.empty else 0.0 for prod in dados_meses]
+        # Limpa labels antigos
         for lbl in self.kpi_comp_labels.values():
             lbl.destroy()
         self.kpi_comp_labels = {}
-        for i, (mes, total) in enumerate(zip(meses_selecionados, totais)):
-            lbl_texto = f"Total {mes}: {float(total):.2f}"
-            lbl = ttk.Label(self.kpi_comp_frame, text=lbl_texto, font=("Segoe UI", 12, "bold"))
-            lbl.pack(side="left", padx=16)
+
+        # Pega os dados EXATOS que estão sendo exibidos na tabela
+        sheet_data = self.sheet_comp_meses.get_sheet_data()
+
+        for col_idx, mes in enumerate(meses_selecionados, 1):
+            total_mes = 0.0
+            for row in sheet_data:
+                if col_idx < len(row):  # Garante que a coluna existe
+                    valor_str = str(row[col_idx])
+                    # Remove medalhas, setas, espaços extras
+                    for simbolo in ["▲", "▼", "🥇", "🥈", "🥉"]:
+                        valor_str = valor_str.replace(simbolo, "")
+                    valor_str = valor_str.replace(",", ".").strip()
+                    try:
+                        valor = float(valor_str)
+                    except Exception:
+                        valor = 0.0
+                    total_mes += valor
+            lbl_texto = f"Total {mes}: {total_mes:.2f}"
+            lbl = ttk.Label(
+                self.kpi_comp_frame,
+                text=lbl_texto,
+                font=("Segoe UI", 13, "bold"),
+                foreground="#1565c0",
+                background="#e3f2fd",
+                padding=8
+            )
+            lbl.pack(side="left", padx=12, pady=6)
             self.kpi_comp_labels[mes] = lbl
 
+
+
+
     def comparar_todos_meses(self):
-        # Seleciona todos os meses na listbox
+        # Seleciona todos os meses na listbox e executa a comparação
         self.listbox_meses.selection_set(0, "end")
         self.comparar_meses()
 
@@ -978,10 +987,13 @@ class ExcelAnalyzerApp:
 
         if self.df is None or self.df.empty:
             if not getattr(self, 'inicializando', False):
-                messagebox.showwarning("Aviso", "O arquivo não possui dados válidos!")
+                # Verifica se há arquivos na pasta antes de alertar
+                import os
+                if os.path.exists("dados_mensais") and os.listdir("dados_mensais"):
+                    messagebox.showwarning("Aviso", "O arquivo não possui dados válidos!")
             return
-        col_usuario = next((col for col in self.df.columns if normalizar_coluna(col) == "usuario"), None)
-        if not col_usuario:
+        col_usuario = "Usuário"
+        if col_usuario not in self.df.columns:
             return
         usuarios = sorted(self.df[col_usuario].dropna().unique())
         for usuario in usuarios:
@@ -990,28 +1002,30 @@ class ExcelAnalyzerApp:
             chk.pack(anchor="w")
             self.check_vars_usuarios[usuario] = var
             self.checkbuttons_usuarios[usuario] = chk
-            self.checkbuttons_usuarios[usuario] = chk
 
     def gerar_tabela_semana(self):
         df_consolidado = self.consolidar_dados_meses()
         if df_consolidado is None or df_consolidado.empty:
             if not getattr(self, 'inicializando', False):
-                messagebox.showwarning("Aviso", "Não há dados mensais carregados!")
+                # Só mostra o aviso se realmente há arquivos na pasta de dados
+                pasta = "dados_mensais"
+                arquivos = [arq for arq in os.listdir(pasta)] if os.path.exists(pasta) else []
+                arquivos = [arq for arq in arquivos if arq.endswith(".xlsx")]
+                if arquivos:
+                    messagebox.showwarning("Aviso", "Não há dados mensais carregados!")
             return
-        colunas_disponiveis = list(df_consolidado.columns)
-        col_usuario = next((col for col in colunas_disponiveis if normalizar_coluna(col) == "usuario"), None)
-        col_data = next((col for col in colunas_disponiveis if normalizar_coluna(col) == "datacriacao"), None)
-        col_agendamento = next((col for col in colunas_disponiveis if normalizar_coluna(col) == "agendamento"), None)
-        if not col_usuario or not col_data or not col_agendamento:
+
+        col_usuario = "Usuário"
+        col_data = "Data criação"
+        col_agendamento = "Agendamento"
+        if not all(col in df_consolidado.columns for col in [col_usuario, col_data, col_agendamento]):
             messagebox.showwarning("Aviso", "A planilha precisa ter as colunas 'Usuário', 'Data criação' e 'Agendamento'.")
             return
 
         df = df_consolidado.copy()
-
         df[col_data] = pd.to_datetime(df[col_data], dayfirst=True, errors="coerce")
         df = df.dropna(subset=[col_usuario, col_data])
 
-        # Tradução dos dias da semana para português
         dias_semana_pt = [
             'Segunda-feira', 'Terça-feira', 'Quarta-feira',
             'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo'
@@ -1025,28 +1039,23 @@ class ExcelAnalyzerApp:
             'Saturday': 'Sábado',
             'Sunday': 'Domingo'
         }
-
         df["DiaSemana"] = df[col_data].dt.day_name().map(dias_trad)
 
         if "DiaSemana" not in df.columns or df["DiaSemana"].isnull().all():
             messagebox.showerror("Erro", "Não foi possível criar a coluna 'DiaSemana'. Verifique se a coluna de data está correta.")
             return
 
-        df["TipoAgendamentoLimpo"] = df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
-        df["Peso"] = df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-
         tabela = df.pivot_table(
             index=col_usuario,
             columns="DiaSemana",
-            values="Peso",
+            values="peso",
             aggfunc="sum",
             fill_value=0
         )
-
         tabela = tabela.reindex(columns=dias_semana_pt, fill_value=0)
 
         self.tree_semana.delete(*self.tree_semana.get_children())
-        self.tree_semana["columns"] = ["usuario"] + dias_semana_pt
+        self.tree_semana["columns"] = ["Usuário"] + dias_semana_pt
 
         for col in self.tree_semana["columns"]:
             self.tree_semana.heading(col, text=col, command=lambda c=col: self.ordenar_treeview_semana(c, False))
@@ -1070,8 +1079,6 @@ class ExcelAnalyzerApp:
             foreground="#3a3a3a"
         )
 
-        self.atualizar_kpis()
-
     def ordenar_treeview_semana(self, col, reverse):
         l = [(self.tree_semana.set(k, col), k) for k in self.tree_semana.get_children('')]
         try:
@@ -1085,34 +1092,29 @@ class ExcelAnalyzerApp:
     def ordenar_treeview_pesos(self, col, reverse):
         l = [(self.tree_pesos.set(k, col), k) for k in self.tree_pesos.get_children('')]
         try:
-           l.sort(key=lambda t: float(t[0].replace(',', '.')), reverse=reverse)
+            l.sort(key=lambda t: float(str(t[0]).replace(',', '.')), reverse=reverse)
         except ValueError:
-           l.sort(key=lambda t: t[0], reverse=reverse)
-
+            l.sort(key=lambda t: str(t[0]).lower(), reverse=reverse)
         for index, (val, k) in enumerate(l):
-           self.tree_pesos.move(k, '', index)
-
-        # Atualiza cabeçalhos com sorting reverso na próxima chamada
-        self.tree_pesos
-
+            self.tree_pesos.move(k, '', index)
+        self.tree_pesos.heading(col, command=lambda: self.ordenar_treeview_pesos(col, not reverse))
 
     def ordenar_treeview_relatorio(self, col, reverse):
         l = [(self.tree_relatorio.set(k, col), k) for k in self.tree_relatorio.get_children('')]
         try:
-            # Tenta ordenar como número (float)
             l.sort(key=lambda t: float(t[0].replace(',', '.')), reverse=reverse)
         except ValueError:
-            # Se não for número, ordena como texto
             l.sort(key=lambda t: str(t[0]).lower(), reverse=reverse)
         for index, (val, k) in enumerate(l):
             self.tree_relatorio.move(k, '', index)
         self.tree_relatorio.heading(col, command=lambda: self.ordenar_treeview_relatorio(col, not reverse))
 
     def browse_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx *.xls"), ("CSV files", "*.csv")])
-        if file_path:
-            self.file_path.set(file_path)
-            self.carregar_dados()
+        file_paths = filedialog.askopenfilenames(filetypes=[("Excel files", "*.xlsx *.xls")])
+        if file_paths:
+            self.file_path.set(";".join(file_paths))
+            self.carregar_dados_multiplos(list(file_paths))
+
 
     def carregar_dados(self):
         try:
@@ -1123,113 +1125,29 @@ class ExcelAnalyzerApp:
                     messagebox.showwarning("Aviso", "Selecione um arquivo primeiro!")
                 return
             file_path = self.file_path.get()
+            df = carregar_planilha(file_path)
+            if "Usuário" in df.columns:
+                df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
 
-            # Conversão automática de .xls para .xlsx
-            if file_path.lower().endswith('.xls') and not file_path.lower().endswith('.xlsx'):
-                novo_path = os.path.splitext(file_path)[0] + ".xlsx"
-                if not os.path.exists(novo_path):
-                    try:
-                        x2x = XLS2XLSX(file_path)
-                        x2x.to_xlsx(novo_path)
-                    except Exception as conv_err:
-                        messagebox.showerror("Erro", f"Erro ao converter arquivo .xls para .xlsx:\n{conv_err}")
-                        self.dados_carregados = False
-                        return
-                file_path = novo_path
+            col_agendamento = "Agendamento"
+            if "peso" not in df.columns:
+                if col_agendamento in df.columns:
+                    tipo_limpo = df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+                    df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+                else:
+                    df["peso"] = 1.0
 
-            colunas_esperadas = ["usuario", "agendamento", "datacriacao"]
-
-            if file_path.endswith('.csv'):
-                linha_cabecalho = encontrar_linha_cabecalho_csv(file_path, colunas_esperadas)
-                self.df = pd.read_csv(file_path, header=linha_cabecalho, sep=None, engine='python')
-            else:
-                linha_cabecalho = encontrar_linha_cabecalho_excel(file_path, colunas_esperadas)
-                self.df = df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
-
-            self.df = self.df.loc[:, ~self.df.columns.str.contains('^Unnamed')]
-
-            # Normaliza nomes de colunas
-            self.df.columns = [normalizar_coluna(col) for col in self.df.columns]
-
-            # PADRONIZAÇÃO: Preenche Agendamento dos ACÓRDÃOS
-            if "tipo" in self.df.columns and "agendamento" in self.df.columns:
-                self.df.loc[self.df["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
-
-            colunas_disponiveis = list(self.df.columns)
-            self.combo_colunas['values'] = colunas_disponiveis
-
-            colunas_necessarias_norm = {
-                "usuario": None,
-                "agendamento": None,
-                "datacriacao": None
-            }
-
-            for col in colunas_disponiveis:
-                nome_norm = normalizar_coluna(col)
-                if nome_norm in colunas_necessarias_norm:
-                    colunas_necessarias_norm[nome_norm] = col
-
-            faltando = [orig for orig, real in colunas_necessarias_norm.items() if real is None]
-
-            if faltando:
-                nomes_legiveis = {
-                    "usuario": "Usuário",
-                    "agendamento": "Agendamento",
-                    "datacriacao": "Data criação"
-                }
-                faltando_legiveis = [nomes_legiveis[f] for f in faltando]
-                messagebox.showerror("Erro", f"As colunas obrigatórias estão faltando: {', '.join(faltando_legiveis)}")
-                self.dados_carregados = False
-                return
-
-            if not colunas_disponiveis:
-                if not getattr(self, 'inicializando', False):
-                    messagebox.showwarning("Aviso", "O arquivo não possui colunas válidas!")
-                return
-
-            usuario_col = next((col for col in colunas_disponiveis if normalizar_coluna(col) in ["usuario"]), None)
-
-            if usuario_col:
-                self.combo_colunas.set(usuario_col)
-
-            # Garante que a coluna 'Peso' existe
-            if "Peso" not in self.df.columns:
-                self.df["Peso"] = 0.0
-
-            col_agendamento = colunas_necessarias_norm["agendamento"]
-
-            if col_agendamento in self.df.columns:
-                tipos = self.df[col_agendamento].dropna().unique().tolist()
-                tipos_limpos = [re.sub(r'\s*\(.*?\)', '', str(t)).strip() for t in tipos]
+            self.df = df
+            if "Agendamento" in self.df.columns:
+                tipos_unicos = self.df["Agendamento"].dropna().unique()
+                tipos_limpos = [re.sub(r'\s*\(.*?\)', '', str(x)).strip() for x in tipos_unicos]
                 self.tipos_agendamento_unicos = sorted(set(tipos_limpos))
-
-                pontuacoes = []
-                for _, row in self.df.iterrows():
-                    if pd.notna(row[col_agendamento]):
-                        tipo = re.sub(r'\s*\(.*?\)', '', str(row[col_agendamento])).strip()
-                        peso = self.gerenciador_pesos.obter_peso(tipo)
-                        pontuacoes.append(peso)
-                    else:
-                        pontuacoes.append(0)
-                self.df["Peso"] = pontuacoes
-
-            # Validação da coluna 'Data criação'
-            col_data = next((col for col in self.df.columns if normalizar_coluna(col) == "datacriacao"), None)
-
-            if col_data:
-                self.df[col_data] = pd.to_datetime(self.df[col_data], dayfirst=True, errors="coerce")
-                if self.df[col_data].isna().all():
-                    if not getattr(self, 'inicializando', False):
-                        messagebox.showerror("Erro", "Não foi possível converter a coluna 'Data criação' para data.")
-                    self.dados_carregados = False
-                    return
-
-            # Atualizações após carregar dados
+            else:
+                self.tipos_agendamento_unicos = []
             self.atualizar_treeview()
             self.atualizar_kpis()
             self.atualizar_checkboxes_usuarios()
             self.atualizar_tabela_pesos()
-            self.gerar_relatorio_produtividade()
             self.gerar_tabela_semana()
             if hasattr(self, "atualizar_comboboxes_comparacao"):
                 self.atualizar_comboboxes_comparacao()
@@ -1246,33 +1164,29 @@ class ExcelAnalyzerApp:
         self.testar_extracao_meses()
         self.atualizar_label_meses_carregados()
 
-    def extrair_mes_ano_do_arquivo(self, caminho):
+    def extrair_mes_ano_do_arquivo(self, file_path):
         try:
-            colunas_esperadas = ["datacriacao"]
-            if caminho.endswith('.csv'):
-                linha_cabecalho = encontrar_linha_cabecalho_csv(caminho, colunas_esperadas)
-                df = pd.read_csv(caminho, header=linha_cabecalho, sep=None, engine='python')
-            else:
-                linha_cabecalho = encontrar_linha_cabecalho_excel(caminho, colunas_esperadas)
-                df = pd.read_excel(caminho, header=linha_cabecalho)
-            col_data = next((col for col in df.columns if normalizar_coluna(col) == "datacriacao"), None)
-            if col_data is not None:
-                datas = pd.to_datetime(df[col_data], errors="coerce").dropna()
+            df = carregar_planilha(file_path)
+            if "Usuário" in df.columns:
+                df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+            col_data = "Data criação"
+            if col_data in df.columns and not df.empty:
+                # Converte para datetime (padrão brasileiro: dd/mm/aaaa hh:mm:ss)
+                datas = pd.to_datetime(df[col_data], dayfirst=True, errors="coerce").dropna()
                 if not datas.empty:
-                    mes = datas.dt.month.mode()[0]
-                    ano = datas.dt.year.mode()[0]
+                    mes = int(datas.dt.month.mode()[0])
+                    ano = int(datas.dt.year.mode()[0])
                     meses_pt = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun',
                                 'jul', 'ago', 'set', 'out', 'nov', 'dez']
                     return f"{meses_pt[mes-1]}/{ano}"
         except Exception as e:
-            print(f"Erro ao extrair mês/ano do arquivo {caminho}: {e}")
+            print(f"Erro ao extrair mês/ano do arquivo {file_path}: {e}")
         return "Mês desconhecido"
 
     def atualizar_treeview(self):
         if self.df is None:
             return
-        for i in self.treeview.get_children():
-            self.treeview.delete(i)
+        self.treeview.delete(*self.treeview.get_children())
         cols = list(self.df.columns)
         self.treeview["columns"] = cols
         self.treeview["show"] = "headings"
@@ -1287,8 +1201,7 @@ class ExcelAnalyzerApp:
         ordem_atual = [self.tree_pesos.item(item)['values'][0] for item in self.tree_pesos.get_children()]
         if not ordem_atual:
             ordem_atual = sorted(self.tipos_agendamento_unicos)
-        for i in self.tree_pesos.get_children():
-            self.tree_pesos.delete(i)
+        self.tree_pesos.delete(*self.tree_pesos.get_children())
         for tipo in ordem_atual:
             peso = self.gerenciador_pesos.obter_peso(tipo)
             self.tree_pesos.insert("", "end", values=(tipo, peso))
@@ -1296,7 +1209,7 @@ class ExcelAnalyzerApp:
     def atualizar_peso_selecionado(self):
         selecionados = self.tree_pesos.selection()
         if not selecionados:
-            messagebox.showwarning("Aviso", "Selecione um ou mais tipos de agendamento primeiro!")
+            messagebox.showwarning("Aviso", "Selecione um ou mais tipos de Agendamento primeiro!")
             return
         tipos_selecionados = [self.tree_pesos.item(item)['values'][0] for item in selecionados]
         novo_peso = self.entry_novo_peso.get()
@@ -1309,9 +1222,16 @@ class ExcelAnalyzerApp:
             self.gerenciador_pesos.atualizar_peso(tipo, peso_float)
         self.gerenciador_pesos.salvar_pesos()
         self.gerenciador_pesos.carregar_pesos()
+        # Recalcule pesos no DataFrame
+        if self.df is not None and "Agendamento" in self.df.columns:
+            tipos_unicos = self.df["Agendamento"].dropna().unique()
+            tipos_limpos = [re.sub(r'\s*\(.*?\)', '', str(x)).strip() for x in tipos_unicos]
+            self.tipos_agendamento_unicos = sorted(set(tipos_limpos))
+        else:
+            self.tipos_agendamento_unicos = []
+
         self.atualizar_tabela_pesos()
         self.atualizar_kpis()
-        self.gerar_relatorio_produtividade()
         self.gerar_tabela_semana()
         self.comparar_meses(mostrar_popup=False)
         novos_ids = []
@@ -1323,26 +1243,20 @@ class ExcelAnalyzerApp:
                 self.tree_pesos.tag_configure("destaque", background="#fff59d")
         if novos_ids:
             self.root.after(2000, lambda: [self.tree_pesos.item(item, tags=()) for item in novos_ids])
-        messagebox.showinfo("Sucesso", "Pesos atualizados e tabelas recarregadas!")
 
     def generate_graph(self):
         if self.inicializando:
             return
-
         if self.df is None or self.df.empty:
             if not getattr(self, 'inicializando', False):
-                messagebox.showwarning("Aviso", "O arquivo não possui dados válidos!")
+                # Só mostra o aviso se realmente há arquivos na pasta de dados
+                if os.path.exists("dados_mensais") and os.listdir("dados_mensais"):
+                    messagebox.showwarning("Aviso", "O arquivo não possui dados válidos!")
             return
-        coluna = self.combo_colunas.get()
-        if not coluna:
-            if not getattr(self, 'inicializando', False):
-                messagebox.showwarning("Aviso", "Selecione uma coluna para análise!")
-            return
+        coluna = "Usuário"
         for widget in self.frame_grafico.winfo_children():
             widget.destroy()
-
         plt.style.use(self.style_map[self.style_var.get()])
-
         self.fig = plt.Figure(figsize=(8, 6), dpi=100)
         ax = self.fig.add_subplot(111)
         counts = self.df[coluna].value_counts()
@@ -1350,7 +1264,6 @@ class ExcelAnalyzerApp:
         graph_type = self.graph_type_map[self.graph_type.get()]
         title = self.title_var.get()
         ax.set_title(title, fontsize=22, fontweight='bold', fontname='DejaVu Sans', color='#1a237e', pad=25)
-
         if graph_type == "bar":
             bars = ax.bar(counts.index.astype(str), counts.values, color=colors)
             ax.set_xlabel(coluna)
@@ -1359,7 +1272,6 @@ class ExcelAnalyzerApp:
                 height = bar.get_height()
                 ax.text(bar.get_x() + bar.get_width()/2, height, f'{float(height):.2f}', ha='center', va='bottom', fontweight='bold')
             plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-
         elif graph_type == "barh":
             bars = ax.barh(counts.index.astype(str), counts.values, color=colors)
             ax.set_ylabel(coluna)
@@ -1367,7 +1279,6 @@ class ExcelAnalyzerApp:
             for bar in bars:
                 width = bar.get_width()
                 ax.text(width, bar.get_y() + bar.get_height()/2, f'{width}', ha='left', va='center', fontweight='bold')
-
         elif graph_type == "pie":
             wedges, texts, autotexts = ax.pie(
                 counts.values, labels=counts.index.astype(str),
@@ -1376,19 +1287,62 @@ class ExcelAnalyzerApp:
             ax.axis('equal')
             for autotext in autotexts:
                 autotext.set_fontweight('bold')
-
         elif graph_type == "line":
             ax.plot(counts.index.astype(str), counts.values, marker='o', color=colors)
             ax.set_xlabel(coluna)
-            ax.set_xlabel('Quantidade')
+            ax.set_ylabel('Quantidade')
             for i, v in enumerate(counts.values):
                 ax.text(i, v, f"{v}", ha='center', va='bottom', fontweight='bold')
             plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-
         self.fig.tight_layout()
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame_grafico)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def carregar_dados_multiplos(self, file_paths):
+        dfs = []
+        for file_path in file_paths:
+            try:
+                df = carregar_planilha(file_path)
+                if "Usuário" in df.columns:
+                    df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+                col_agendamento = "Agendamento"
+                if "peso" not in df.columns:
+                    if col_agendamento in df.columns:
+                        tipo_limpo = df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
+                        df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+                    else:
+                        df["peso"] = 1.0
+                # Salva o arquivo padronizado na pasta dados_mensais
+                pasta = "dados_mensais"
+                if not os.path.exists(pasta):
+                    os.makedirs(pasta)
+                nome_arquivo = os.path.basename(file_path)
+                df.to_excel(os.path.join(pasta, nome_arquivo), index=False)
+                dfs.append(df)
+            except Exception as e:
+                messagebox.showerror("Erro", f"Erro ao carregar {file_path}:\n{str(e)}")
+
+        if dfs:
+            self.df = pd.concat(dfs, ignore_index=True)
+            self.atualizar_tipos_agendamento_unicos()
+            self.atualizar_treeview()
+            self.atualizar_kpis()
+            self.atualizar_checkboxes_usuarios()
+            self.atualizar_tabela_pesos()
+            self.gerar_tabela_semana()
+            if hasattr(self, "atualizar_comboboxes_comparacao"):
+                self.atualizar_comboboxes_comparacao()
+            # Seleciona todos os meses na listbox antes de comparar
+            if hasattr(self, "listbox_meses"):
+                self.listbox_meses.selection_clear(0, "end")
+                self.listbox_meses.selection_set(0, "end")
+            if hasattr(self, "comparar_meses"):
+                self.comparar_meses(mostrar_popup=False)
+            self.atualizar_label_meses_carregados()
+            messagebox.showinfo("Sucesso", "Todos os arquivos foram carregados com sucesso!")
+        else:
+            messagebox.showwarning("Aviso", "Nenhum dado válido foi carregado.")
 
     def save_graph(self):
         if self.fig is None:
@@ -1410,64 +1364,39 @@ class ExcelAnalyzerApp:
     def gerar_relatorio_produtividade(self):
         if self.df is None or self.df.empty:
             return
-
-        # Normaliza nomes das colunas
-        self.df.columns = [normalizar_coluna(col) for col in self.df.columns]
-
-        col_usuario = next((col for col in self.df.columns if normalizar_coluna(col) == "usuario"), None)
-        col_agendamento = next((col for col in self.df.columns if normalizar_coluna(col) == "agendamento"), None)
-        col_tipo = next((col for col in self.df.columns if normalizar_coluna(col) == "tipo"), None)
-
-        # Preenche Agendamento dos ACÓRDÃOS
-        if col_tipo and col_agendamento:
+        col_usuario = "Usuário"
+        col_agendamento = "Agendamento"
+        col_tipo = "Tipo"
+        if col_tipo in self.df.columns and col_agendamento in self.df.columns:
             self.df.loc[self.df[col_tipo].str.upper().str.strip() == "ACÓRDÃO", col_agendamento] = "Juntada de Relatório/Voto/Acórdão (581)"
-
-        # Filtra apenas por usuário (não por agendamento!)
-        if col_usuario:
-            self.df = self.df.dropna(subset=[col_usuario])
-            self.df[col_usuario] = self.df[col_usuario].astype(str).str.strip()
-        else:
-            return
-
-        # Limpa o tipo de agendamento para cálculo do peso
-        if col_agendamento:
-            self.df["TipoAgendamentoLimpo"] = self.df[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
-            self.df["Peso"] = self.df["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-        else:
-            self.df["Peso"] = 1.0
-
-        # Agrupa por usuário e mês
-        self.df["Mes"] = self.df["datacriacao"].apply(lambda x: x.strftime("%b/%Y") if not pd.isnull(x) else "")
-        usuarios = sorted(self.df[col_usuario].unique())
-        meses = sorted(self.df["Mes"].unique(), key=ExcelAnalyzerApp.chave_mes_ano)
-        dados_usuarios = {usuario: {} for usuario in usuarios}
-
-        for usuario in usuarios:
-            grupo = self.df[self.df[col_usuario] == usuario]
+        df_temp = self.df.copy()
+        df_temp["Data criação"] = pd.to_datetime(df_temp["Data criação"], errors="coerce")
+        df_temp["Mes"] = df_temp["Data criação"].apply(lambda x: x.strftime("%b/%Y") if not pd.isnull(x) else "")
+        usuarios = sorted(df_temp[col_usuario].unique())
+        meses_validos = [m for m in df_temp["Mes"].unique() if m and "/" in str(m)]
+        meses = sorted(meses_validos, key=ExcelAnalyzerApp.chave_mes_ano)
+        dados_usuarios = {Usuário: {} for Usuário in usuarios}
+        for Usuário in usuarios:
+            grupo = df_temp[df_temp[col_usuario] == Usuário]
             for mes in meses:
-                prod_mes = grupo[grupo["Mes"] == mes]["Peso"].sum()
-                dados_usuarios[usuario][mes] = float(prod_mes)
-
-        # Monta tabela para exibição
-        colunas = ["usuario"] + meses + ["Total"]
+                prod_mes = grupo.loc[grupo["Mes"] == mes, "peso"].sum() if "peso" in grupo.columns else 0.0
+                dados_usuarios[Usuário][mes] = float(prod_mes)
+        colunas = ["Usuário"] + meses + ["Total"]
         dados_tabela = []
-        for usuario in usuarios:
-            linha = [usuario]
+        for Usuário in usuarios:
+            linha = [Usuário]
             total = 0.0
             for mes in meses:
-                valor = dados_usuarios[usuario].get(mes, 0.0)
+                valor = dados_usuarios[Usuário].get(mes, 0.0)
                 linha.append(formatar_valor(valor))
                 total += valor
             linha.append(f"{float(total):.2f}")
             dados_tabela.append(linha)
-
-        # Exibe na treeview ou outro componente
         self.tree_relatorio.delete(*self.tree_relatorio.get_children())
-        self.tree_relatorio["columns"] = colunas  # Inclua "usuario"!
+        self.tree_relatorio["columns"] = colunas
         for i, col in enumerate(colunas):
-            self.tree_relatorio.heading(col, text="Usuário" if col == "usuario" else col)
+            self.tree_relatorio.heading(col, text="Usuário" if col == "Usuário" else col)
             self.tree_relatorio.column(col, width=120 if i > 0 else 180, anchor="center")
-
         for linha in dados_tabela:
             self.tree_relatorio.insert("", "end", values=linha)
 
@@ -1480,69 +1409,8 @@ class ExcelAnalyzerApp:
             messagebox.showinfo(titulo, mensagem)
 
     def consolidar_dados_meses(self):
-        import os
-        import pandas as pd
-        import re
-
-        dfs = []
-
-        # Inclui o arquivo atualmente carregado na interface
         if self.df is not None and not self.df.empty:
-            df_atual = self.df.copy()
-            df_atual.columns = [normalizar_coluna(col) for col in df_atual.columns]
-            # PADRONIZAÇÃO: Preenche Agendamento dos ACÓRDÃOS
-            if "tipo" in df_atual.columns and "agendamento" in df_atual.columns:
-                df_atual.loc[df_atual["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
-            col_usuario = next((col for col in df_atual.columns if normalizar_coluna(col) == "usuario"), None)
-            col_agendamento = next((col for col in df_atual.columns if normalizar_coluna(col) == "agendamento"), None)
-            if col_usuario:
-                df_atual = df_atual.dropna(subset=[col_usuario])
-                df_atual[col_usuario] = df_atual[col_usuario].astype(str).str.strip()
-                df_atual["TipoAgendamentoLimpo"] = df_atual[col_agendamento].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
-                df_atual["Peso"] = df_atual["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-                dfs.append(df_atual)
-
-        # Inclui os arquivos salvos em dados_mensais
-        pasta = "dados_mensais"
-        arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(('.xlsx', '.csv'))] if os.path.exists(pasta) else []
-        for arquivo in arquivos:
-            caminho = os.path.join(pasta, arquivo)
-            try:
-                df_mes = pd.read_excel(caminho)
-                df_mes.columns = [normalizar_coluna(col) for col in df_mes.columns]
-                # PADRONIZAÇÃO: Preenche Agendamento dos ACÓRDÃOS
-                if "tipo" in df_mes.columns and "agendamento" in df_mes.columns:
-                    df_mes.loc[df_mes["tipo"].str.upper().str.strip() == "ACÓRDÃO", "agendamento"] = "Juntada de Relatório/Voto/Acórdão (581)"
-                col_usuario_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "usuario"), None)
-                col_agendamento_mes = next((col for col in df_mes.columns if normalizar_coluna(col) == "agendamento"), None)
-                if col_usuario_mes:
-                    df_mes = df_mes.dropna(subset=[col_usuario_mes])
-                    df_mes[col_usuario_mes] = df_mes[col_usuario_mes].astype(str).str.strip()
-                    df_mes["TipoAgendamentoLimpo"] = df_mes[col_agendamento_mes].apply(lambda x: re.sub(r'\s*\(.*?\)', '', str(x)).strip())
-                    df_mes["Peso"] = df_mes["TipoAgendamentoLimpo"].apply(self.gerenciador_pesos.obter_peso)
-                    dfs.append(df_mes)
-            except Exception as e:
-                print(f"Erro ao processar {arquivo}: {e}")
-
-        for i, df in enumerate(dfs):
-            df.columns = pd.Index(df.columns).map(str)
-            _, idx = np.unique(df.columns, return_index=True)
-            df = df.iloc[:, sorted(idx)]
-            dfs[i] = df
-        dfs = [df.reset_index(drop=True) for df in dfs]
-        df_conc = pd.concat(dfs, ignore_index=True)
-
-
-        if dfs:
-            dfs = [df.reset_index(drop=True) for df in dfs]
-            df_conc = pd.concat(dfs, ignore_index=True)
-            # Normaliza os nomes das colunas
-            df_conc.columns = [normalizar_coluna(col) for col in df_conc.columns]
-            # Limpa tipo e nroprocesso
-            for col in ["tipo", "nroprocesso"]:
-                if col in df_conc.columns:
-                    df_conc[col] = df_conc[col].astype(str).str.strip().replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
-            return df_conc
+            return self.df.copy()
         return None
 
     def visualizar_graficos_produtividade(self):
@@ -1552,7 +1420,7 @@ class ExcelAnalyzerApp:
             return
 
         colunas = self.tree_relatorio["columns"]
-        meses = [col for col in colunas if col not in ("usuario", "Total")]
+        meses = [col for col in colunas if col not in ("Usuário", "Total")]
         if not meses:
             messagebox.showwarning("Aviso", "Gere o relatório de produtividade primeiro!")
             return
@@ -1577,142 +1445,68 @@ class ExcelAnalyzerApp:
             ttk.Button(popup, text="OK", command=confirmar, bootstyle=SUCCESS).pack(pady=10)
         abrir_popup()
 
+    def _mostrar_grafico_produtividade(self, meses, mes_escolhido):
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-        def _mostrar_grafico_produtividade(self, meses, mes_escolhido):
-            import matplotlib.pyplot as plt
-            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-            import numpy as np
+        usuarios = []
+        pontuacoes = []
 
-            # Coleta dados do Treeview de relatório
-            usuarios = []
-            pontuacoes = []
+        if mes_escolhido == "Todos os meses":
+            idxs = [self.tree_relatorio["columns"].index(m) for m in meses]
+            for item in self.tree_relatorio.get_children():
+                valores = self.tree_relatorio.item(item, "values")
+                usuarios.append(valores[0])
+                total = sum(float(valores[i]) for i in idxs)
+                pontuacoes.append(total)
+            titulo = "Produtividade Total por Usuário"
+        else:
+            idx = self.tree_relatorio["columns"].index(mes_escolhido)
+            for item in self.tree_relatorio.get_children():
+                valores = self.tree_relatorio.item(item, "values")
+                usuarios.append(valores[0])
+                pontuacoes.append(float(valores[idx]))
+            titulo = f"Produtividade por Usuário - {mes_escolhido}"
 
-            if mes_escolhido == "Todos os meses":
-                idxs = [self.tree_relatorio["columns"].index(m) for m in meses]
-                for item in self.tree_relatorio.get_children():
-                    valores = self.tree_relatorio.item(item, "values")
-                    usuarios.append(valores[0])
-                    total = sum(float(valores[i]) for i in idxs)
-                    pontuacoes.append(total)
-                titulo = "Produtividade Total por Usuário"
-            else:
-                idx = self.tree_relatorio["columns"].index(mes_escolhido)
-                for item in self.tree_relatorio.get_children():
-                    valores = self.tree_relatorio.item(item, "values")
-                    usuarios.append(valores[0])
-                    pontuacoes.append(float(valores[idx]))
-                titulo = f"Produtividade por Usuário - {mes_escolhido}"
+        grafico_window = ttk.Toplevel(self.root)
+        grafico_window.title(titulo)
+        grafico_window.geometry("1050x700")
 
-            # Cria a janela do gráfico
-            grafico_window = ttk.Toplevel(self.root)
-            grafico_window.title(titulo)
-            grafico_window.geometry("1050x700")
+        frame_controles = ttk.Frame(grafico_window, padding=10)
+        frame_controles.pack(fill="x")
+        ttk.Label(frame_controles, text="Tipo de gráfico:").pack(side="left", padx=5)
+        tipo_grafico = ttk.StringVar(value="barras horizontais")
+        grafico_combo = ttk.Combobox(
+            frame_controles,
+            textvariable=tipo_grafico,
+            values=["barras verticais", "barras horizontais", "pizza", "em linha"],
+            state="readonly",
+            width=15,
+            bootstyle=ttk.INFO
+        )
+        grafico_combo.pack(side="left", padx=5)
 
-            frame_controles = ttk.Frame(grafico_window, padding=10)
-            frame_controles.pack(fill="x")
-            ttk.Label(frame_controles, text="Tipo de gráfico:").pack(side="left", padx=5)
-            tipo_grafico = ttk.StringVar(value="barras horizontais")
-            grafico_combo = ttk.Combobox(
-                frame_controles,
-                textvariable=tipo_grafico,
-                values=["barras verticais", "barras horizontais", "pizza", "em linha"],
-                state="readonly",
-                width=15,
-                bootstyle=ttk.INFO
-            )
-            grafico_combo.pack(side="left", padx=5)
+        ttk.Label(frame_controles, text="Estilo visual:").pack(side="left", padx=5)
+        style_var_prod = ttk.StringVar(value="Solarize_Light2")
+        style_combo_prod = ttk.Combobox(
+            frame_controles,
+            textvariable=style_var_prod,
+            values=list(STYLE_OPTIONS.keys()),
+            state="readonly",
+            width=20,
+            bootstyle=ttk.INFO
+        )
+        style_combo_prod.pack(side="left", padx=5)
+        multi_color_var_prod = ttk.BooleanVar(value=True)
+        ttk.Checkbutton(frame_controles, text="Barras coloridas", variable=multi_color_var_prod, bootstyle=ttk.SUCCESS).pack(side="left", padx=5)
+        salvar_btn = ttk.Button(frame_controles, text="Salvar Gráfico", bootstyle=ttk.SECONDARY)
+        salvar_btn.pack(side="left", padx=20)
+        gerar_btn = ttk.Button(frame_controles, text="Gerar Gráfico", bootstyle=ttk.SUCCESS)
+        gerar_btn.pack(side="left", padx=5)
 
-            ttk.Label(frame_controles, text="Estilo visual:").pack(side="left", padx=5)
-            style_var_prod = ttk.StringVar(value="Solarize_Light2")
-            style_combo_prod = ttk.Combobox(
-                frame_controles,
-                textvariable=style_var_prod,
-                values=list(STYLE_OPTIONS.keys()),
-                state="readonly",
-                width=20,
-                bootstyle=ttk.INFO
-            )
-            style_combo_prod.pack(side="left", padx=5)
-            multi_color_var_prod = ttk.BooleanVar(value=True)
-            ttk.Checkbutton(frame_controles, text="Barras coloridas", variable=multi_color_var_prod, bootstyle=ttk.SUCCESS).pack(side="left", padx=5)
-            salvar_btn = ttk.Button(frame_controles, text="Salvar Gráfico", bootstyle=ttk.SECONDARY)
-            salvar_btn.pack(side="left", padx=20)
-            gerar_btn = ttk.Button(frame_controles, text="Gerar Gráfico", bootstyle=ttk.SUCCESS)
-            gerar_btn.pack(side="left", padx=5)
-
-            frame_grafico = ttk.Frame(grafico_window)
-            frame_grafico.pack(fill="both", expand=True, padx=10, pady=10)
-            self.fig_produtividade = None
-
-            def gerar_grafico_produtividade():
-                for widget in frame_grafico.winfo_children():
-                    widget.destroy()
-                plt.style.use(STYLE_OPTIONS[style_var_prod.get()])
-                fig = plt.Figure(figsize=(8, 6))
-                ax = fig.add_subplot(111)
-                colors = plt.cm.tab10.colors if multi_color_var_prod.get() else '#1f77b4'
-                tipo = tipo_grafico.get()
-                if tipo == "barras verticais":
-                    bars = ax.bar(usuarios, pontuacoes, color=colors)
-                    ax.set_xlabel('Usuários')
-                    ax.set_ylabel('Pontuação de Produtividade')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                    for bar in bars:
-                        height = bar.get_height()
-                        ax.text(bar.get_x() + bar.get_width()/2., height, f'{height:.2f}', ha='center', va='bottom', fontweight='bold')
-                elif tipo == "barras horizontais":
-                    bars = ax.barh(usuarios, pontuacoes, color=colors)
-                    ax.set_ylabel('Usuários')
-                    ax.set_xlabel('Pontuação de Produtividade')
-                    for bar in bars:
-                        width = bar.get_width()
-                        ax.text(width, bar.get_y() + bar.get_height()/2., f'{width:.2f}', ha='left', va='center', fontweight='bold')
-                elif tipo == "pizza":
-                    wedges, texts, autotexts = ax.pie(
-                        pontuacoes,
-                        labels=usuarios,
-                        autopct='%1.1f%%',
-                        startangle=90,
-                        colors=colors if multi_color_var_prod.get() else None
-                    )
-                    ax.axis('equal')
-                    for autotext in autotexts:
-                        autotext.set_fontweight('bold')
-                elif tipo == "em linha":
-                    ax.plot(usuarios, pontuacoes, marker='o', color=colors if not multi_color_var_prod.get() else plt.cm.tab10(0))
-                    ax.set_xlabel('Usuários')
-                    ax.set_ylabel('Pontuação de Produtividade')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                    for i, v in enumerate(pontuacoes):
-                        ax.text(i, v + 0.1, f"{v:.2f}", ha='center', fontweight='bold')
-                ax.set_title(titulo, fontsize=22, fontweight='bold', fontname='DejaVu Sans', color='#1a237e', pad=25)
-                fig.tight_layout()
-                canvas = FigureCanvasTkAgg(fig, master=frame_grafico)
-                canvas.draw()
-                canvas.get_tk_widget().pack(fill="both", expand=True)
-                self.fig_produtividade = fig
-
-            def salvar_grafico_produtividade():
-                if self.fig_produtividade is None:
-                    if getattr(self, 'inicializando', False):
-                        return
-                    messagebox.showwarning("Aviso", "Gere um gráfico primeiro!")
-                    return
-                file_path = filedialog.asksaveasfilename(
-                    defaultextension=".png",
-                    initialfile="produtividade.png",
-                    filetypes=[("PNG Image", "*.png"), ("JPEG Image", "*.jpg"), ("PDF", "*.pdf")]
-                )
-                if file_path:
-                    self.fig_produtividade.savefig(file_path, bbox_inches='tight', dpi=300)
-                    if getattr(self, 'inicializando', False):
-                        return
-                    messagebox.showinfo("Sucesso", f"Gráfico salvo em:\n{file_path}")
-
-            salvar_btn.config(command=salvar_grafico_produtividade)
-            gerar_btn.config(command=gerar_grafico_produtividade)
-            gerar_grafico_produtividade()
-
+        frame_grafico = ttk.Frame(grafico_window)
+        frame_grafico.pack(fill="both", expand=True, padx=10, pady=10)
+        self.fig_produtividade = None
 
         def gerar_grafico_produtividade():
             for widget in frame_grafico.winfo_children():
@@ -1755,7 +1549,7 @@ class ExcelAnalyzerApp:
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
                 for i, v in enumerate(pontuacoes):
                     ax.text(i, v + 0.1, f"{v:.2f}", ha='center', fontweight='bold')
-            ax.set_title("Produtividade por Usuário", fontsize=22, fontweight='bold', fontname='DejaVu Sans', color='#1a237e', pad=25)
+            ax.set_title(titulo, fontsize=22, fontweight='bold', fontname='DejaVu Sans', color='#1a237e', pad=25)
             fig.tight_layout()
             canvas = FigureCanvasTkAgg(fig, master=frame_grafico)
             canvas.draw()
@@ -1764,19 +1558,15 @@ class ExcelAnalyzerApp:
 
         def salvar_grafico_produtividade():
             if self.fig_produtividade is None:
-                if getattr(self, 'inicializando', False):
-                    return
-                messagebox.showwarning("Aviso", "Gere um gráfico primeiro!")
+                messagebox.showwarning("Aviso", "Gere o gráfico primeiro!")
                 return
             file_path = filedialog.asksaveasfilename(
                 defaultextension=".png",
-                initialfile="produtividade.png",
+                initialfile="grafico_produtividade.png",
                 filetypes=[("PNG Image", "*.png"), ("JPEG Image", "*.jpg"), ("PDF", "*.pdf")]
             )
             if file_path:
                 self.fig_produtividade.savefig(file_path, bbox_inches='tight', dpi=300)
-                if getattr(self, 'inicializando', False):
-                    return
                 messagebox.showinfo("Sucesso", f"Gráfico salvo em:\n{file_path}")
 
         salvar_btn.config(command=salvar_grafico_produtividade)
@@ -1791,7 +1581,7 @@ class ExcelAnalyzerApp:
         file_path = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Arquivo Excel", "*.xlsx")])
         if file_path:
             dados = [self.tree_relatorio.item(item)['values'] for item in self.tree_relatorio.get_children()]
-            df_export = pd.DataFrame(dados, columns=["usuario", "Pontuação"])
+            df_export = pd.DataFrame(dados, columns=self.tree_relatorio["columns"])
             df_export.to_excel(file_path, index=False)
             if getattr(self, 'inicializando', False):
                 return
@@ -1814,12 +1604,12 @@ class ExcelAnalyzerApp:
             pdf.set_font("Arial", size=12)
             pdf.cell(0, 10, "Relatório de Produtividade", ln=True, align="C")
             pdf.ln(10)
-            pdf.cell(60, 10, "usuario", border=1)
-            pdf.cell(40, 10, "Pontuação", border=1)
+            for col in self.tree_relatorio["columns"]:
+                pdf.cell(60, 10, str(col), border=1)
             pdf.ln()
-            for usuario, pontuacao in dados:
-                pdf.cell(60, 10, str(usuario), border=1)
-                pdf.cell(40, 10, str(pontuacao), border=1)
+            for linha in dados:
+                for valor in linha:
+                    pdf.cell(60, 10, str(valor), border=1)
                 pdf.ln()
             pdf.output(file_path)
             if getattr(self, 'inicializando', False):
@@ -1830,7 +1620,7 @@ class ExcelAnalyzerApp:
         file_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Configuração de Pesos", "*.json")])
         if file_path:
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(self.gerenciador_pesos.pesos, f, ensure_ascii=False, indent=2)
+                json.dump(dict(self.gerenciador_pesos.pesos), f, ensure_ascii=False, indent=2)
             if getattr(self, 'inicializando', False):
                 return
             messagebox.showinfo("Sucesso", "Configuração salva!")
@@ -1858,7 +1648,6 @@ class ExcelAnalyzerApp:
         )
         result = dlg.show()
         if result == "Restaurar":
-            from collections import defaultdict
             self.gerenciador_pesos.pesos = defaultdict(lambda: 1.0)
             self.atualizar_tabela_pesos()
             self.atualizar_kpis()
@@ -1876,52 +1665,26 @@ class ExcelAnalyzerApp:
                 label.config(text="--")
             return
 
-        # Normaliza os nomes das colunas
-        df_consolidado.columns = [normalizar_coluna(col) for col in df_consolidado.columns]
+        col_usuario = "Usuário"
+        col_agendamento = "Agendamento"
+        col_data = "Data criação"
+        col_nroproc = "Nro. processo"
+        col_tipo = "Tipo"
+        col_status = "Status"
+        col_cod = "Código"
 
-        # Remove colunas duplicadas "peso" (mantém só a primeira)
-        colunas_peso = [col for col in df_consolidado.columns if col.lower() == "peso"]
-        # Só remove se realmente houver mais de uma E a coluna existir
-        if len(colunas_peso) > 1:
-            for col in colunas_peso[1:]:
-                if col in df_consolidado.columns:
-                    df_consolidado = df_consolidado.drop(columns=[col])
-        # Só renomeia se "Peso" existe
-        if "Peso" in df_consolidado.columns:
-            df_consolidado.rename(columns={"Peso": "peso"}, inplace=True)
-
-        # Defina todos os nomes de coluna relevantes
-        col_usuario = "usuario"
-        col_data = "datacriacao"
-        col_tipo = "tipo"
-        col_nro_proc = "nroprocesso"
-
-        # Trata strings vazias, espaços e "nan"/"None" como NA
-        for col in [col_tipo, col_nro_proc]:
-            if col in df_consolidado.columns:
-                df_consolidado[col] = df_consolidado[col].astype(str).str.strip().replace({"": pd.NA, "nan": pd.NA, "None": pd.NA})
-
-        if col_tipo in df_consolidado.columns and col_nro_proc in df_consolidado.columns:
-            df_validas = df_consolidado.dropna(subset=[col_tipo, col_nro_proc])
-            minutas = len(df_validas)
+        # Total de minutas
+        if col_usuario in df_consolidado.columns:
+            total_minutas = df_consolidado[col_usuario].count()
+            self.kpi_labels["Minutas"].config(text=str(total_minutas))
         else:
-            minutas = 0
+            self.kpi_labels["Minutas"].config(text="--")
 
-        self.kpi_labels["Minutas"].config(text=str(minutas))
-
-        # Produtividade total por usuário (soma dos pesos)
+        # Média produtividade
         if col_usuario in df_consolidado.columns and "peso" in df_consolidado.columns:
             produtividade = df_consolidado.groupby(col_usuario)["peso"].sum()
-            # Se produtividade for DataFrame, converte para Series
-            if isinstance(produtividade, pd.DataFrame):
-                produtividade = produtividade["peso"]
             media_prod = produtividade.mean() if not produtividade.empty else 0
-            if isinstance(media_prod, pd.Series):
-                media_prod = float(media_prod.mean())
-            else:
-                media_prod = float(media_prod)
             self.kpi_labels["Média Produtividade"].config(text=f"{media_prod:.2f}")
-
             top3 = produtividade.sort_values(ascending=False).head(3)
             if not top3.empty:
                 top3_str = "\n".join([f"{i+1}º {u}: {p:.1f}" for i, (u, p) in enumerate(top3.items())])
@@ -1962,8 +1725,12 @@ if __name__ == "__main__":
 
     root = ttk.Window(themename="flatly")
 
+    # Define o ícone, se não estiver em ambiente frozen (ex: pyinstaller)
     if not getattr(sys, 'frozen', False):
-        root.iconbitmap(os.path.join(os.path.dirname(__file__), "icon.ico"))
+        try:
+            root.iconbitmap(os.path.join(os.path.dirname(__file__), "icon.ico"))
+        except Exception:
+            pass
 
     root.withdraw()
     splash = SplashScreen(root, theme="flatly")
@@ -1976,7 +1743,6 @@ if __name__ == "__main__":
             app = ExcelAnalyzerApp(root)
             tema_salvo = app.tema_var.get()
             app.style.theme_use(tema_salvo)
-            app.style.theme_use(app.tema_var.get())
             elapsed = time.time() - start_time
             remaining = max(1.0 - elapsed, 0)
             root.after(int(remaining * 1000), lambda: [
