@@ -3,6 +3,7 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import MessageDialog
 from tkinter import filedialog, messagebox
 from tksheet import Sheet
+from checklistcombobox import ChecklistCombobox
 import pandas as pd
 import calendar
 import matplotlib.pyplot as plt
@@ -158,7 +159,6 @@ class ExcelAnalyzerApp:
         self.carregar_pesos_automaticamente()
         self.carregar_dados_mensais_automaticamente()
         self.inicializando = False
-        self.atualizar_treeview()
         self.atualizar_kpis()
         self.atualizar_checkboxes_usuarios()
         self.atualizar_tabela_pesos()
@@ -230,7 +230,6 @@ class ExcelAnalyzerApp:
         # Atualiza KPIs e interfaces dependentes
         self.atualizar_kpis()
         self.atualizar_comboboxes_comparacao()
-        self.atualizar_treeview()
         self.atualizar_checkboxes_usuarios()
         self.atualizar_tabela_pesos()
         self.gerar_tabela_semana()
@@ -267,10 +266,10 @@ class ExcelAnalyzerApp:
         if dfs:
             self.df = pd.concat(dfs, ignore_index=True)
             self.atualizar_tipos_agendamento_unicos()
-            self.atualizar_treeview()
             self.atualizar_kpis()
             self.atualizar_checkboxes_usuarios()
             self.atualizar_tabela_pesos()
+            self.atualizar_filtros_grafico()
             self.gerar_tabela_semana()
             if hasattr(self, "atualizar_comboboxes_comparacao"):
                 self.atualizar_comboboxes_comparacao()
@@ -392,13 +391,74 @@ class ExcelAnalyzerApp:
 
         painel_h = ttk.PanedWindow(frame_analise, orient="horizontal")
         painel_h.pack(fill="both", expand=True, padx=10, pady=10)
+
         frame_esquerdo = ttk.Frame(painel_h)
         painel_h.add(frame_esquerdo, weight=1)
-        self.treeview = ttk.Treeview(frame_esquerdo, bootstyle=INFO)
-        self.treeview.pack(fill="both", expand=True, padx=5, pady=5)
+
+        frame_filtros = ttk.LabelFrame(painel_h, text="Filtros para Gráfico", padding=10, bootstyle=INFO)
+        painel_h.add(frame_filtros, weight=1)
+
+        # Filtro por Usuário
+        ttk.Label(frame_filtros, text="Usuário:").grid(row=0, column=0, sticky="w", pady=2)
+        frame_usuario = ttk.LabelFrame(frame_filtros, text="Usuário", bootstyle=INFO, padding=2)
+        frame_usuario.grid(row=0, column=1, sticky="ew", pady=2)
+        self.listbox_usuario = tk.Listbox(
+            frame_usuario, selectmode="multiple", exportselection=False, height=8,
+            bg="#e3f2fd", highlightthickness=0, relief="flat", borderwidth=0
+        )
+        self.listbox_usuario.pack(side="left", fill="both", expand=True)
+        scroll_usuario = ttk.Scrollbar(frame_usuario, orient="vertical", command=self.listbox_usuario.yview)
+        scroll_usuario.pack(side="right", fill="y")
+        self.listbox_usuario.config(yscrollcommand=scroll_usuario.set)
+
+        # Filtro por Mês
+        ttk.Label(frame_filtros, text="Mês:").grid(row=1, column=0, sticky="w", pady=2)
+        frame_mes = ttk.LabelFrame(frame_filtros, text="Mês", bootstyle=INFO, padding=2)
+        frame_mes.grid(row=1, column=1, sticky="ew", pady=2)
+        self.listbox_mes = tk.Listbox(
+            frame_mes, selectmode="multiple", exportselection=False, height=8,
+            bg="#e3f2fd", highlightthickness=0, relief="flat", borderwidth=0
+        )
+        self.listbox_mes.pack(side="left", fill="both", expand=True)
+        scroll_mes = ttk.Scrollbar(frame_mes, orient="vertical", command=self.listbox_mes.yview)
+        scroll_mes.pack(side="right", fill="y")
+        self.listbox_mes.config(yscrollcommand=scroll_mes.set)
+
+        # Filtro por Tipo
+        ttk.Label(frame_filtros, text="Tipo:").grid(row=2, column=0, sticky="w", pady=2)
+        frame_tipo = ttk.LabelFrame(frame_filtros, text="Tipo", bootstyle=INFO, padding=2)
+        frame_tipo.grid(row=2, column=1, sticky="ew", pady=2)
+        self.listbox_tipo = tk.Listbox(
+            frame_tipo, selectmode="multiple", exportselection=False, height=8,
+            bg="#e3f2fd", highlightthickness=0, relief="flat", borderwidth=0
+        )
+        self.listbox_tipo.pack(side="left", fill="both", expand=True)
+        scroll_tipo = ttk.Scrollbar(frame_tipo, orient="vertical", command=self.listbox_tipo.yview)
+        scroll_tipo.pack(side="right", fill="y")
+        self.listbox_tipo.config(yscrollcommand=scroll_tipo.set)
+
+        # Filtro por Agendamento
+        ttk.Label(frame_filtros, text="Agendamento:").grid(row=3, column=0, sticky="w", pady=2)
+        frame_agendamento = ttk.LabelFrame(frame_filtros, text="Agendamento", bootstyle=INFO, padding=2)
+        frame_agendamento.grid(row=3, column=1, sticky="ew", pady=2)
+        self.listbox_agendamento = tk.Listbox(
+            frame_agendamento, selectmode="multiple", exportselection=False, height=8,
+            bg="#e3f2fd", highlightthickness=0, relief="flat", borderwidth=0
+        )
+        self.listbox_agendamento.pack(side="left", fill="both", expand=True)
+        scroll_agendamento = ttk.Scrollbar(frame_agendamento, orient="vertical", command=self.listbox_agendamento.yview)
+        scroll_agendamento.pack(side="right", fill="y")
+        self.listbox_agendamento.config(yscrollcommand=scroll_agendamento.set)
+
+
+        # Botão para aplicar filtros e gerar gráfico
+        ttk.Button(frame_filtros, text="Gerar Gráfico com Filtros", command=self.generate_graph_com_filtros, bootstyle=SUCCESS).grid(row=4, column=0, columnspan=2, pady=10)
+
+        # Configure grid para expansão
+        frame_filtros.columnconfigure(1, weight=1)
+
         frame_controles = ttk.LabelFrame(frame_esquerdo, text="Configurações do Gráfico", padding=10, bootstyle=INFO)
         frame_controles.pack(fill="x", padx=5, pady=5)
-        ttk.Label(frame_controles, text="Coluna para análise: Usuário").grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="w")
         ttk.Label(frame_controles, text="Tipo de gráfico:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
         self.graph_type = ttk.StringVar(value="barras horizontais")
         self.graph_type_map = {
@@ -434,18 +494,16 @@ class ExcelAnalyzerApp:
 
     def atualizar_label_meses_carregados(self):
         pasta = "dados_mensais"
+        meses = []
         if os.path.exists(pasta):
-            meses = []
             for arq in os.listdir(pasta):
                 file_path = os.path.join(pasta, arq)
                 mes_ano = self.extrair_mes_ano_do_arquivo(file_path)
                 if mes_ano != "Mês desconhecido":
                     meses.append(mes_ano)
-            meses_validos = [m for m in meses if m and "/" in str(m)]
-            if meses_validos:
-                self.label_meses_carregados.config(text="Meses carregados: " + ", ".join(sorted(meses_validos, key=self.chave_mes_ano)))
-            else:
-                self.label_meses_carregados.config(text="Meses carregados: --")
+        meses_validos = sorted(set(meses), key=self.chave_mes_ano)
+        texto = "Meses carregados: " + (", ".join(meses_validos) if meses_validos else "--")
+        self.label_meses_carregados.config(text=texto, font=("Segoe UI", 11, "bold"), foreground="#1565c0", padding=5)
 
     def criar_aba_config_pesos(self):
         frame_pesos = ttk.Frame(self.notebook)
@@ -516,6 +574,30 @@ class ExcelAnalyzerApp:
             bootstyle=WARNING
         ).pack(side="left", padx=5)
 
+    def atualizar_filtros_grafico(self):
+        if self.df is None or self.df.empty:
+            for lb in [self.listbox_usuario, self.listbox_mes, self.listbox_tipo, self.listbox_agendamento]:
+                lb.delete(0, tk.END)
+            return
+
+        usuarios = sorted(self.df['Usuário'].dropna().unique())
+        if 'Data criação' in self.df.columns:
+            self.df['Data criação'] = pd.to_datetime(self.df['Data criação'], errors="coerce", dayfirst=True)
+            meses = sorted(self.df['Data criação'].dropna().dt.strftime('%b/%Y').unique(), key=self.chave_mes_ano)
+        else:
+            meses = []
+        tipos = sorted(self.df['Tipo'].dropna().unique()) if 'Tipo' in self.df.columns else []
+        agendamentos = sorted(self.df['Agendamento'].dropna().unique()) if 'Agendamento' in self.df.columns else []
+
+        for lb, vals in [
+            (self.listbox_usuario, usuarios),
+            (self.listbox_mes, meses),
+            (self.listbox_tipo, tipos),
+            (self.listbox_agendamento, agendamentos)
+        ]:
+            lb.delete(0, tk.END)
+            for v in vals:
+                lb.insert(tk.END, v)
 
     def criar_aba_configuracoes(self):
         # Frame principal da aba
@@ -732,21 +814,45 @@ class ExcelAnalyzerApp:
         self.mapa_arquivo_meses = dict(zip(opcoes_amigaveis, arquivos))
         frame_superior = ttk.Frame(frame_principal)
         frame_superior.pack(fill="x", padx=10, pady=10)
-        ttk.Label(frame_superior, text="Selecione os meses para comparar:").pack(anchor="w")
-        self.listbox_meses = tk.Listbox(
-            frame_superior, selectmode="multiple", height=8, exportselection=False, font=("Segoe UI", 11)
+
+        # Label superior
+        ttk.Label(frame_superior, text="Selecione os meses para comparar:").pack(anchor="w", padx=2, pady=(6, 2))
+
+        # Frame estilizado para a listbox (bordas e integração visual)
+        frame_listbox_meses = ttk.LabelFrame(
+            frame_superior, text="Meses", bootstyle=INFO, padding=2
         )
-        scroll = ttk.Scrollbar(frame_superior, orient="vertical", command=self.listbox_meses.yview)
+        frame_listbox_meses.pack(fill="x", padx=0, pady=(0, 8))
+
+        # Listbox compacta, azul claro, igual à dos filtros de gráfico
+        self.listbox_meses = tk.Listbox(
+            frame_listbox_meses,
+            selectmode="multiple",
+            height=5,           # altura compacta
+            width=18,           # largura compacta
+            font=("Segoe UI", 11),
+            bg="#e3f2fd",
+            highlightthickness=0,
+            relief="flat",
+            borderwidth=0
+        )
+        self.listbox_meses.pack(side="left", fill="x", expand=True)
+
+        # Scrollbar integrada
+        scroll = ttk.Scrollbar(frame_listbox_meses, orient="vertical", command=self.listbox_meses.yview)
         scroll.pack(side="right", fill="y")
-        self.listbox_meses.configure(yscrollcommand=scroll.set)
-        for opcao in opcoes_amigaveis:
-            self.listbox_meses.insert("end", opcao)
-        self.listbox_meses.pack(fill="x", expand=True)
+        self.listbox_meses.config(yscrollcommand=scroll.set)
+
+        # Preencher a listbox (exemplo)
+        self.listbox_meses.delete(0, tk.END)
+        for mes in opcoes_amigaveis:
+            self.listbox_meses.insert("end", mes)
+
         frame_botoes = ttk.Frame(frame_superior)
         frame_botoes.pack(fill="x", pady=10)
         ttk.Button(frame_botoes, text="Comparar", command=self.comparar_meses, bootstyle=SUCCESS).pack(side="left", padx=5)
         ttk.Button(frame_botoes, text="Comparar Todos", command=self.comparar_todos_meses, bootstyle=SUCCESS).pack(side="left", padx=5)
-        ttk.Button(frame_botoes, text="Excluir dados dos meses", command=self.limpar_dados_anteriores, bootstyle=DANGER).pack(side="right", padx=5)
+        ttk.Button(frame_botoes, text="Excluir dados dos meses", command=self.limpar_dados_anteriores, bootstyle=DANGER).pack(side="left", padx=5)
         self.kpi_comp_frame = ttk.Frame(frame_principal)
         self.kpi_comp_frame.pack(fill="x", padx=10, pady=5)
         self.kpi_comp_labels = {}
@@ -1144,7 +1250,6 @@ class ExcelAnalyzerApp:
                 self.tipos_agendamento_unicos = sorted(set(tipos_limpos))
             else:
                 self.tipos_agendamento_unicos = []
-            self.atualizar_treeview()
             self.atualizar_kpis()
             self.atualizar_checkboxes_usuarios()
             self.atualizar_tabela_pesos()
@@ -1182,19 +1287,6 @@ class ExcelAnalyzerApp:
         except Exception as e:
             print(f"Erro ao extrair mês/ano do arquivo {file_path}: {e}")
         return "Mês desconhecido"
-
-    def atualizar_treeview(self):
-        if self.df is None:
-            return
-        self.treeview.delete(*self.treeview.get_children())
-        cols = list(self.df.columns)
-        self.treeview["columns"] = cols
-        self.treeview["show"] = "headings"
-        for col in cols:
-            self.treeview.heading(col, text=col)
-            self.treeview.column(col, width=130, anchor="center", stretch=False)
-        for _, row in self.df.head(100).iterrows():
-            self.treeview.insert("", "end", values=[row[col] for col in cols])
 
     def atualizar_tabela_pesos(self):
         print("Atualizando tabela de pesos...")
@@ -1299,6 +1391,41 @@ class ExcelAnalyzerApp:
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(fill="both", expand=True)
 
+    def generate_graph_com_filtros(self):
+        if self.df is None or self.df.empty:
+            messagebox.showwarning("Aviso", "Nenhum dado carregado para gerar gráfico.")
+            return
+
+        df_filtrado = self.df.copy()
+
+        # Múltiplos Usuários
+        usuarios_sel = [self.listbox_usuario.get(i) for i in self.listbox_usuario.curselection()]
+        if usuarios_sel:
+            df_filtrado = df_filtrado[df_filtrado['Usuário'].isin(usuarios_sel)]
+
+        # Múltiplos Meses
+        meses_sel = [self.listbox_mes.get(i) for i in self.listbox_mes.curselection()]
+        if meses_sel and 'Data criação' in df_filtrado.columns:
+            df_filtrado['Data criação'] = pd.to_datetime(df_filtrado['Data criação'], errors="coerce", dayfirst=True)
+            df_filtrado['Mes'] = df_filtrado['Data criação'].dt.strftime('%b/%Y')
+            df_filtrado = df_filtrado[df_filtrado['Mes'].isin(meses_sel)]
+
+        # Múltiplos Tipos
+        tipos_sel = [self.listbox_tipo.get(i) for i in self.listbox_tipo.curselection()]
+        if tipos_sel:
+            df_filtrado = df_filtrado[df_filtrado['Tipo'].isin(tipos_sel)]
+
+        # Múltiplos Agendamentos
+        agendamentos_sel = [self.listbox_agendamento.get(i) for i in self.listbox_agendamento.curselection()]
+        if agendamentos_sel:
+            df_filtrado = df_filtrado[df_filtrado['Agendamento'].isin(agendamentos_sel)]
+
+        if df_filtrado.empty:
+            messagebox.showinfo("Informação", "Nenhum dado corresponde aos filtros selecionados.")
+            return
+
+        self.gerar_grafico_filtrado(df_filtrado)
+
     def carregar_dados_multiplos(self, file_paths):
         dfs = []
         for file_path in file_paths:
@@ -1326,13 +1453,13 @@ class ExcelAnalyzerApp:
         if dfs:
             self.df = pd.concat(dfs, ignore_index=True)
             self.atualizar_tipos_agendamento_unicos()
-            self.atualizar_treeview()
             self.atualizar_kpis()
             self.atualizar_checkboxes_usuarios()
             self.atualizar_tabela_pesos()
             self.gerar_tabela_semana()
             if hasattr(self, "atualizar_comboboxes_comparacao"):
                 self.atualizar_comboboxes_comparacao()
+            self.atualizar_filtros_grafico()
             # Seleciona todos os meses na listbox antes de comparar
             if hasattr(self, "listbox_meses"):
                 self.listbox_meses.selection_clear(0, "end")
@@ -1572,6 +1699,57 @@ class ExcelAnalyzerApp:
         salvar_btn.config(command=salvar_grafico_produtividade)
         gerar_btn.config(command=gerar_grafico_produtividade)
         gerar_grafico_produtividade()
+
+    def gerar_grafico_filtrado(self, df_filtrado):
+        # Exemplo: gráfico de barras por usuário
+        for widget in self.frame_grafico.winfo_children():
+            widget.destroy()
+        plt.style.use(self.style_map[self.style_var.get()])
+        fig = plt.Figure(figsize=(8, 6), dpi=100)
+        ax = fig.add_subplot(111)
+        coluna = "Usuário"
+        counts = df_filtrado[coluna].value_counts()
+        colors = plt.cm.tab10.colors if self.multi_color_var.get() else '#1f77b4'
+        graph_type = self.graph_type_map[self.graph_type.get()]
+        title = self.title_var.get()
+        ax.set_title(title, fontsize=22, fontweight='bold', fontname='DejaVu Sans', color='#1a237e', pad=25)
+        if graph_type == "bar":
+            bars = ax.bar(counts.index.astype(str), counts.values, color=colors)
+            ax.set_xlabel(coluna)
+            ax.set_ylabel('Quantidade')
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2, height, f'{float(height):.2f}', ha='center', va='bottom', fontweight='bold')
+            plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+        elif graph_type == "barh":
+            bars = ax.barh(counts.index.astype(str), counts.values, color=colors)
+            ax.set_ylabel(coluna)
+            ax.set_xlabel('Quantidade')
+            for bar in bars:
+                width = bar.get_width()
+                ax.text(width, bar.get_y() + bar.get_height()/2, f'{width}', ha='left', va='center', fontweight='bold')
+        elif graph_type == "pie":
+            wedges, texts, autotexts = ax.pie(
+                counts.values, labels=counts.index.astype(str),
+                autopct='%1.1f%%', startangle=90, colors=colors
+            )
+            ax.axis('equal')
+            for autotext in autotexts:
+                autotext.set_fontweight('bold')
+        elif graph_type == "line":
+            ax.plot(counts.index.astype(str), counts.values, marker='o', color=colors)
+            ax.set_xlabel(coluna)
+            ax.set_ylabel('Quantidade')
+            for i, v in enumerate(counts.values):
+                ax.text(i, v, f"{v}", ha='center', va='bottom', fontweight='bold')
+            plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+        fig.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=self.frame_grafico)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        self.fig = fig
+        self.canvas = canvas
+
 
     def exportar_relatorio_excel(self):
         if self.df is None or self.df.empty or not self.tree_relatorio.get_children():
