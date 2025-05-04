@@ -1075,9 +1075,6 @@ class ExcelAnalyzerApp:
             lbl.pack(side="left", padx=12, pady=6)
             self.kpi_comp_labels[mes] = lbl
 
-
-
-
     def comparar_todos_meses(self):
         # Seleciona todos os meses na listbox e executa a comparação
         self.listbox_meses.selection_set(0, "end")
