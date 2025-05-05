@@ -1,29 +1,8 @@
 from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QSplashScreen, QApplication
-from PyQt5.QtGui import QPixmap
-
-import sys
-import os
-import pandas as pd
-import calendar
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
-from collections import defaultdict
-from xls2xlsx import XLS2XLSX
-import re
-import json
-import unicodedata
-import numpy as np
-from PyQt5.QtGui import QPixmap
-import time
-
-try:
-    from fpdf import FPDF
-except ImportError:
-    FPDF = None
-
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -45,7 +24,36 @@ from PyQt5.QtWidgets import (
     QAbstractItemView,
     QMessageBox,
 )
-from PyQt5.QtCore import Qt
+
+import sys
+import os
+import sip
+import pandas as pd
+import calendar
+import matplotlib
+import tempfile
+
+matplotlib.use("Qt5Agg")
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+
+import matplotlib.pyplot as plt
+
+plt.close("all")
+from collections import defaultdict
+from xls2xlsx import XLS2XLSX
+import re
+import json
+import unicodedata
+import numpy as np
+import time
+
+try:
+    from fpdf import FPDF
+except ImportError:
+    FPDF = None
 
 
 def carregar_planilha(file_path):
@@ -114,7 +122,11 @@ class GerenciadorPesosAgendamento:
         return self.pesos.get(tipo_agendamento, 1.0)
 
 
-import time
+class MplCanvas(FigureCanvasQTAgg):
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = fig.add_subplot(111)
+        super().__init__(fig)
 
 
 class MainWindow(QMainWindow):
@@ -146,6 +158,27 @@ class MainWindow(QMainWindow):
         self.atualizar_listbox_meses()
         self.atualizar_filtros_grafico()
         self.atualizar_kpis()
+
+        self._atualizando_grafico = False
+        self._canvas_valido = True
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.timeout.connect(self._atualizar_grafico_debounced)
+        self.tabs.currentChanged.connect(self.tab_changed)
+
+    def __del__(self):
+        self._debounce_timer.stop()
+        self._canvas_valido = False
+        try:
+            self.combo_tipo_grafico.currentIndexChanged.disconnect()
+            self.combo_design_grafico.currentIndexChanged.disconnect()
+            self.check_cores_diferentes.stateChanged.disconnect()
+            self.filtro_usuario.itemSelectionChanged.disconnect()
+            self.filtro_mes.itemSelectionChanged.disconnect()
+            self.filtro_tipo.itemSelectionChanged.disconnect()
+            self.filtro_agendamento.itemSelectionChanged.disconnect()
+        except Exception:
+            pass
 
     def setup_tab_kpi(self):
         # Layout principal da aba KPIs
@@ -220,71 +253,113 @@ class MainWindow(QMainWindow):
                 )
 
     def setup_tab_graficos(self):
-        layout = QHBoxLayout()
+        main_layout = QHBoxLayout()
 
-        # Filtros laterais
-        filtro_box = QGroupBox("Filtros para Gráfico")
-        filtro_box.setStyleSheet(
-            "QGroupBox { background: #e3f2fd; border-radius: 8px; border: 2px solid #1565c0; }"
+        # Painel de opções (filtros + tipo/design)
+        opcoes_box = QGroupBox("Opções e Filtros")
+        opcoes_box.setStyleSheet(
+            "QGroupBox { background: #e3f2fd; border-radius: 12px; border: 2px solid #1565c0; font-size: 11pt; }"
         )
-        filtro_layout = QVBoxLayout()
-        filtro_layout.addWidget(QLabel("Usuário:"))
-        self.filtro_usuario = QListWidget()
-        self.filtro_usuario.setSelectionMode(QListWidget.MultiSelection)
-        self.filtro_usuario.setStyleSheet("background: #e3f2fd;")
-        filtro_layout.addWidget(self.filtro_usuario)
+        opcoes_layout = QVBoxLayout()
+        opcoes_layout.setSpacing(14)
+        opcoes_layout.setContentsMargins(16, 18, 16, 18)
 
-        filtro_layout.addWidget(QLabel("Mês:"))
-        self.filtro_mes = QListWidget()
-        self.filtro_mes.setSelectionMode(QListWidget.MultiSelection)
-        self.filtro_mes.setStyleSheet("background: #e3f2fd;")
-        filtro_layout.addWidget(self.filtro_mes)
+        tipo_design_layout = QHBoxLayout()
+        tipo_design_layout.setSpacing(8)
 
-        filtro_layout.addWidget(QLabel("Tipo:"))
-        self.filtro_tipo = QListWidget()
-        self.filtro_tipo.setSelectionMode(QListWidget.MultiSelection)
-        self.filtro_tipo.setStyleSheet("background: #e3f2fd;")
-        filtro_layout.addWidget(self.filtro_tipo)
+        tipo_col = QVBoxLayout()
+        lbl_tipo = QLabel("Tipo de Gráfico:")
+        self.combo_tipo_grafico = QComboBox()
+        self.combo_tipo_grafico.addItems(["Colunas Horizontais", "Colunas Verticais"])
+        self.combo_tipo_grafico.setCurrentIndex(0)
+        tipo_col.addWidget(lbl_tipo)
+        tipo_col.addWidget(self.combo_tipo_grafico)
 
-        filtro_layout.addWidget(QLabel("Agendamento:"))
-        self.filtro_agendamento = QListWidget()
-        self.filtro_agendamento.setSelectionMode(QListWidget.MultiSelection)
-        self.filtro_agendamento.setStyleSheet("background: #e3f2fd;")
-        filtro_layout.addWidget(self.filtro_agendamento)
+        design_col = QVBoxLayout()
+        lbl_design = QLabel("Design:")
+        self.combo_design_grafico = QComboBox()
+        self.combo_design_grafico.addItems([
+            "seaborn-v0_8",
+            "tableau-colorblind10",
+            "ggplot",
+            "Solarize_Light2",
+            "classic",
+            "dark_background",
+        ])
+        self.combo_design_grafico.setCurrentText("seaborn-v0_8")
+        design_col.addWidget(lbl_design)
+        design_col.addWidget(self.combo_design_grafico)
 
-        btn_graph = QPushButton("Gerar Gráfico com Filtros")
+        tipo_design_layout.addLayout(tipo_col)
+        tipo_design_layout.addSpacing(10)
+        tipo_design_layout.addLayout(design_col)
+        tipo_design_layout.addStretch()
+        opcoes_layout.addLayout(tipo_design_layout)
+
+        self.check_cores_diferentes = QCheckBox("Colunas em cores diferentes")
+        self.check_cores_diferentes.setChecked(True)
+        opcoes_layout.addWidget(self.check_cores_diferentes)
+        opcoes_layout.addSpacing(8)
+
+        for label, attr in [
+            ("Usuário:", "filtro_usuario"),
+            ("Mês:", "filtro_mes"),
+            ("Tipo:", "filtro_tipo"),
+            ("Agendamento:", "filtro_agendamento"),
+        ]:
+            lbl = QLabel(label)
+            lbl.setStyleSheet("font-weight: 500; margin-top: 4px; margin-bottom: 2px;")
+            opcoes_layout.addWidget(lbl)
+            lb = QListWidget()
+            lb.setSelectionMode(QListWidget.MultiSelection)
+            lb.setStyleSheet("background: #e3f2fd;")
+            setattr(self, attr, lb)
+            opcoes_layout.addWidget(lb)
+
+        opcoes_layout.addStretch()
+
+        btn_graph = QPushButton("Gerar Gráfico")
         btn_graph.setStyleSheet(
             """
             QPushButton {
-                background-color: #43a047; color: white; font-weight: bold; border-radius: 8px; padding: 6px 18px;
+                background-color: #43a047; color: white; font-weight: bold; border-radius: 8px; padding: 8px 24px;
             }
             QPushButton:hover { background-color: #388e3c; }
             """
         )
         btn_graph.clicked.connect(self.gerar_grafico_com_filtros)
-        filtro_layout.addWidget(btn_graph)
-        filtro_box.setLayout(filtro_layout)
-        layout.addWidget(filtro_box, 1)
+        opcoes_layout.addWidget(btn_graph, alignment=Qt.AlignBottom)
+        opcoes_box.setLayout(opcoes_layout)
+        main_layout.addWidget(opcoes_box, 1)
 
-        # Painel de gráfico (ordem correta: crie Figure/canvas antes do layout!)
-        from matplotlib.figure import Figure
-        from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-
-        self.fig = Figure(figsize=(8, 6), dpi=100)
-        self.canvas_grafico = FigureCanvas(self.fig)
-        self.grafico_layout = QVBoxLayout()
-        self.grafico_layout.addWidget(self.canvas_grafico)
-
-        self.painel_grafico = QGroupBox("Gráfico")
-        self.painel_grafico.setStyleSheet(
-            "QGroupBox { background: #fafafa; border-radius: 8px; }"
+        # Painel do gráfico (central) - AGORA USANDO QLabel
+        self.grafico_label = QLabel()
+        self.grafico_label.setAlignment(Qt.AlignCenter)
+        self.grafico_label.setStyleSheet("background: #fafafa; border-radius: 10px;")
+        grafico_layout = QVBoxLayout()
+        grafico_layout.addWidget(self.grafico_label)
+        grafico_box = QGroupBox("Gráfico")
+        grafico_box.setStyleSheet(
+            "QGroupBox { background: #fafafa; border-radius: 10px; border: 2px solid #1565c0; }"
         )
-        self.painel_grafico.setMinimumWidth(600)
-        self.painel_grafico.setMinimumHeight(400)
-        self.painel_grafico.setLayout(self.grafico_layout)
-        layout.addWidget(self.painel_grafico, 3)
+        grafico_box.setLayout(grafico_layout)
+        main_layout.addWidget(grafico_box, 3)
 
-        self.tab_graficos.setLayout(layout)
+        self.tab_graficos.setLayout(main_layout)
+
+        self.combo_tipo_grafico.currentIndexChanged.connect(self._debounce_grafico)
+        self.combo_design_grafico.currentIndexChanged.connect(self._debounce_grafico)
+        self.check_cores_diferentes.stateChanged.connect(self._debounce_grafico)
+        self.filtro_usuario.itemSelectionChanged.connect(self._debounce_grafico)
+        self.filtro_mes.itemSelectionChanged.connect(self._debounce_grafico)
+        self.filtro_tipo.itemSelectionChanged.connect(self._debounce_grafico)
+        self.filtro_agendamento.itemSelectionChanged.connect(self._debounce_grafico)
+
+        self._canvas_valido = True
+
+    def _debounce_grafico(self):
+        if self._canvas_valido:
+            self._debounce_timer.start(200)  # 200 ms
 
     def setup_tab_comparacao_meses(self):
         layout = QVBoxLayout()
@@ -566,31 +641,95 @@ class MainWindow(QMainWindow):
         self.mostrar_grafico_usuarios(df_filtrado)
 
     def mostrar_grafico_usuarios(self, df_filtrado):
-        if not hasattr(self, "fig") or self.fig is None:
-            QMessageBox.warning(self, "Erro", "Canvas do gráfico não inicializado.")
-            return
-        self.fig.clear()
-        ax = self.fig.add_subplot(111)
+        tipo = self.combo_tipo_grafico.currentText()
+        estilo = self.combo_design_grafico.currentText()
+        usar_cores_diferentes = self.check_cores_diferentes.isChecked()
+
+        if estilo != getattr(self, "current_style", None):
+            plt.style.use(estilo)
+            self.current_style = estilo
+
+        fig = Figure(figsize=(8, 6), dpi=100)
+        ax = fig.add_subplot(111)
         if "Usuário" not in df_filtrado.columns or df_filtrado.empty:
-            self.canvas_grafico.draw()
+            self.grafico_label.clear()
             return
+
         counts = df_filtrado["Usuário"].value_counts()
-        bars = ax.bar(counts.index.astype(str), counts.values, color="#1565c0")
-        ax.set_xlabel("Usuário")
-        ax.set_ylabel("Quantidade de Minutas")
-        ax.set_title("Produtividade por Usuário", fontsize=18, fontweight="bold")
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                height,
-                f"{float(height):.0f}",
-                ha="center",
-                va="bottom",
-                fontweight="bold",
+        labels = counts.index.astype(str)
+        values = counts.values
+
+        if usar_cores_diferentes:
+            cores = plt.get_cmap("tab10").colors
+            bar_colors = [cores[i % len(cores)] for i in range(len(labels))]
+        else:
+            bar_colors = ["#1565c0"] * len(labels)
+
+        if estilo == "dark_background":
+            label_color = "white"
+            grid_color = "#444"
+        else:
+            label_color = "black"
+            grid_color = "#ccc"
+
+        if tipo == "Colunas Horizontais":
+            bars = ax.barh(labels, values, color=bar_colors)
+            ax.set_xlabel("Quantidade de Minutas", color=label_color)
+            ax.set_ylabel("Usuário", color=label_color)
+            ax.tick_params(axis="x", colors=label_color)
+            ax.tick_params(axis="y", colors=label_color)
+            ax.grid(True, axis="x", color=grid_color, linestyle="--", alpha=0.5)
+            for bar in bars:
+                width = bar.get_width()
+                ax.annotate(
+                    f"{float(width):.0f}",
+                    xy=(width, bar.get_y() + bar.get_height() / 2),
+                    xytext=(8, 0),
+                    textcoords="offset points",
+                    va="center",
+                    ha="left",
+                    fontweight="bold",
+                    color=label_color,
+                    fontsize=11,
+                )
+        else:
+            bars = ax.bar(labels, values, color=bar_colors)
+            ax.set_xlabel("Usuário", color=label_color)
+            ax.set_ylabel("Quantidade de Minutas", color=label_color)
+            ax.tick_params(axis="x", colors=label_color, labelsize=9)
+            ax.tick_params(axis="y", colors=label_color)
+            plt.setp(
+                ax.get_xticklabels(),
+                rotation=45,
+                ha="right",
+                rotation_mode="anchor",
             )
-        self.fig.tight_layout()
-        self.canvas_grafico.draw()
+            ax.grid(True, axis="y", color=grid_color, linestyle="--", alpha=0.5)
+            for bar in bars:
+                height = bar.get_height()
+                ax.annotate(
+                    f"{float(height):.0f}",
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 14),
+                    textcoords="offset points",
+                    va="bottom",
+                    ha="center",
+                    fontweight="bold",
+                    color=label_color,
+                    fontsize=11,
+                )
+        ax.set_title(
+            "Produtividade por Usuário",
+            fontsize=18,
+            fontweight="bold",
+            color=label_color,
+        )
+        fig.tight_layout()
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
+            fig.savefig(tmpfile.name, bbox_inches="tight")
+            self.grafico_label.setPixmap(QPixmap(tmpfile.name))
+
 
     def setup_tab_config(self):
         layout = QVBoxLayout()
@@ -840,8 +979,7 @@ class MainWindow(QMainWindow):
         self.atualizar_kpis()
 
     def exportar_grafico(self):
-        canvas = getattr(self, "canvas_grafico", None)
-        if canvas is None or not canvas.isVisible():
+        if not hasattr(self, "fig") or self.fig is None:
             QMessageBox.warning(self, "Aviso", "Nenhum gráfico para exportar.")
             return
         path, _ = QFileDialog.getSaveFileName(
@@ -849,7 +987,7 @@ class MainWindow(QMainWindow):
         )
         if path:
             try:
-                canvas.figure.savefig(path)
+                self.fig.savefig(path)
                 QMessageBox.information(
                     self, "Exportação", "Gráfico exportado com sucesso!"
                 )
@@ -859,6 +997,40 @@ class MainWindow(QMainWindow):
                     "Erro",
                     "O gráfico não está mais disponível. Gere novamente antes de exportar.",
                 )
+
+    def closeEvent(self, event):
+        self._debounce_timer.stop()
+        self._canvas_valido = False
+        try:
+            self.combo_tipo_grafico.currentIndexChanged.disconnect()
+            self.combo_design_grafico.currentIndexChanged.disconnect()
+            self.check_cores_diferentes.stateChanged.disconnect()
+            self.filtro_usuario.itemSelectionChanged.disconnect()
+            self.filtro_mes.itemSelectionChanged.disconnect()
+            self.filtro_tipo.itemSelectionChanged.disconnect()
+            self.filtro_agendamento.itemSelectionChanged.disconnect()
+            self._debounce_timer.stop()
+        except Exception:
+            pass
+        event.accept()
+
+    def _atualizar_grafico_debounced(self):
+        if (
+            not getattr(self, "_canvas_valido", True)
+            or not hasattr(self, "canvas_grafico")
+            or self.canvas_grafico is None
+            or sip.isdeleted(self.canvas_grafico)
+        ):
+            return
+        self.gerar_grafico_com_filtros()
+
+    def tab_changed(self, idx):
+        aba = self.tabs.widget(idx)
+        if aba == self.tab_graficos:
+            self._canvas_valido = True
+        else:
+            self._canvas_valido = False
+            self._debounce_timer.stop()
 
 
 if __name__ == "__main__":
