@@ -1,6 +1,8 @@
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QSplashScreen, QApplication
 from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 from PyQt5.QtWidgets import (
@@ -25,13 +27,21 @@ from PyQt5.QtWidgets import (
     QMessageBox,
 )
 
+QApplication.setFont(QFont("Segoe UI, Roboto, Arial", 11))
+
 import sys
 import os
 import sip
 import pandas as pd
 import calendar
-import matplotlib
 import tempfile
+import shutil
+import re
+import json
+import unicodedata
+import numpy as np
+import time
+import matplotlib
 
 matplotlib.use("Qt5Agg")
 import matplotlib.pyplot as plt
@@ -39,16 +49,9 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-import matplotlib.pyplot as plt
-
 plt.close("all")
 from collections import defaultdict
 from xls2xlsx import XLS2XLSX
-import re
-import json
-import unicodedata
-import numpy as np
-import time
 
 try:
     from fpdf import FPDF
@@ -57,13 +60,28 @@ except ImportError:
 
 
 def carregar_planilha(file_path):
-    import pandas as pd
-
     header = pd.read_excel(file_path, nrows=0)
     if "peso" in header.columns:
         df = pd.read_excel(file_path, usecols="A:H")
     else:
         df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
+        if "Agendamento" in df.columns:
+            tipo_limpo = df["Agendamento"].apply(
+                lambda x: re.sub(r"\s*\(.*?\)", "", str(x)).strip()
+            )
+            gerenciador_pesos = GerenciadorPesosAgendamento()
+            df["peso"] = tipo_limpo.apply(gerenciador_pesos.obter_peso)
+        else:
+            df["peso"] = 1.0
+    # Padroniza nome do usuário
+    if "Usuário" in df.columns:
+        df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+    # Remove colunas duplicadas
+    df = df.loc[:, ~df.columns.duplicated()]
+    # Garante nome correto da coluna
+    for col in df.columns:
+        if isinstance(col, str) and col.lower().startswith("usu") and col != "Usuário":
+            df.rename(columns={col: "Usuário"}, inplace=True)
     return df
 
 
@@ -136,21 +154,93 @@ class MainWindow(QMainWindow):
         self.resize(1200, 800)
         self.df = None
         self.gerenciador_pesos = GerenciadorPesosAgendamento()
-
         self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+        self.kpi_panel = QWidget()
+        self.kpi_panel.setStyleSheet(
+            """
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            padding: 18px 24px 18px 24px;
+        """
+        )
+        kpi_layout = QHBoxLayout()
+        kpi_layout.setSpacing(20)
+        self.kpi_widgets = {}
 
-        self.tab_kpi = QWidget()
+        for title, key, color in [
+            ("Minutas", "minutas", "#1976d2"),
+            ("Média Produtividade", "media", "#43a047"),
+            ("Dia Mais Produtivo", "dia", "#fbc02d"),
+            ("Top 3 Usuários", "top3", "#d32f2f"),
+        ]:
+            frame = QFrame()
+            frame.setStyleSheet(
+                f"""
+                QFrame {{
+                    background: white;
+                    border-radius: 12px;
+                    border: 2px solid {color};
+                    min-width: 180px;
+                    max-width: 220px;
+                }}
+            """
+            )
+            vbox = QVBoxLayout()
+            lbl_title = QLabel(title)
+            lbl_title.setStyleSheet(
+                f"color: {color}; font-size: 14px; font-weight: bold;"
+            )
+            lbl_value = QLabel("--")
+            lbl_value.setStyleSheet("font-size: 32px; font-weight: bold; color: #222;")
+            lbl_value.setAlignment(Qt.AlignCenter)
+            vbox.addWidget(lbl_title)
+            vbox.addWidget(lbl_value)
+            frame.setLayout(vbox)
+            kpi_layout.addWidget(frame)
+            self.kpi_widgets[key] = lbl_value
+
+        btn_importar = QPushButton("Importar Excel")
+        btn_importar.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #1976d2;
+                color: white;
+                border-radius: 8px;
+                padding: 10px 26px;
+                font-size: 15px;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                border: none;
+                min-width: 160px;
+            }
+            QPushButton:hover {
+                background-color: #1565c0;
+            }
+        """
+        )
+
+        btn_importar.clicked.connect(self.importar_arquivo_excel)
+        kpi_layout.addWidget(btn_importar, alignment=Qt.AlignRight)
+
+        self.kpi_panel.setLayout(kpi_layout)
+
+        # Layout principal com KPIs fixos acima das abas
+        main_widget = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(self.kpi_panel)
+        main_layout.addWidget(self.tabs)
+        main_widget.setLayout(main_layout)
+        self.setCentralWidget(main_widget)
+
         self.tab_graficos = QWidget()
         self.tab_comparacao_meses = QWidget()
         self.tab_config = QWidget()
 
-        self.tabs.addTab(self.tab_kpi, "KPIs")
         self.tabs.addTab(self.tab_graficos, "Análise e Gráficos")
         self.tabs.addTab(self.tab_comparacao_meses, "Comparação de Meses")
         self.tabs.addTab(self.tab_config, "Atribuir Pesos")
 
-        self.setup_tab_kpi()
         self.setup_tab_graficos()
         self.setup_tab_comparacao_meses()
         self.setup_tab_config()
@@ -180,68 +270,28 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
-    def setup_tab_kpi(self):
-        # Layout principal da aba KPIs
-        vbox = QVBoxLayout()
-        hbox_kpis = QHBoxLayout()
-        self.kpi_labels = {}
-
-        kpis = [
-            ("Minutas", "minutas"),
-            ("Média Produtividade", "media"),
-            ("Dia Mais Produtivo", "dia"),
-            ("Top 3 Usuários", "top3"),
-        ]
-        for title, key in kpis:
-            card = QGroupBox(title)
-            vbox_card = QVBoxLayout()
-            lbl = QLabel("--")
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("font-size: 26px; font-weight: bold; color: #1565c0;")
-            vbox_card.addWidget(lbl)
-            card.setLayout(vbox_card)
-            card.setStyleSheet(
-                """
-                QGroupBox { 
-                    background: #e3f2fd; 
-                    border-radius: 10px; 
-                    font-weight: bold; 
-                    border: 2px solid #1565c0;
-                }
-                """
-            )
-            hbox_kpis.addWidget(card)
-            self.kpi_labels[key] = lbl
-        vbox.addLayout(hbox_kpis)
-
-        # Botão Importar Arquivo Excel
-        btn_importar = QPushButton("Importar Arquivo Excel")
-        btn_importar.setStyleSheet(
-            "QPushButton { background-color: #1565c0; color: white; font-weight: bold; border-radius: 8px; padding: 6px 18px; } QPushButton:hover { background-color: #0d47a1; }"
-        )
-        btn_importar.clicked.connect(self.importar_arquivo_excel)
-        vbox.addWidget(btn_importar, alignment=Qt.AlignLeft)
-
-        self.tab_kpi.setLayout(vbox)
-
     def importar_arquivo_excel(self):
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self,
-            "Importar arquivo Excel",
+            "Importar arquivos Excel",
             "",
             "Todos Arquivos (*);;Excel Files (*.xlsx *.xls)",
         )
-        if path:
-            nome_destino = os.path.basename(path)
+        if paths:
             pasta = "dados_mensais"
             os.makedirs(pasta, exist_ok=True)
-            destino = os.path.join(pasta, nome_destino)
-            if not os.path.exists(destino):
-                import shutil
-
-                shutil.copy2(path, destino)
+            arquivos_importados = 0
+            for path in paths:
+                nome_destino = os.path.basename(path)
+                destino = os.path.join(pasta, nome_destino)
+                if not os.path.exists(destino):
+                    shutil.copy2(path, destino)
+                    arquivos_importados += 1
+            if arquivos_importados:
                 QMessageBox.information(
-                    self, "Importação", "Arquivo importado com sucesso!"
+                    self,
+                    "Importação",
+                    f"{arquivos_importados} arquivo(s) importado(s) com sucesso!",
                 )
                 self.carregar_dados_mensais()
                 self.atualizar_listbox_meses()
@@ -249,7 +299,9 @@ class MainWindow(QMainWindow):
                 self.atualizar_kpis()
             else:
                 QMessageBox.warning(
-                    self, "Aviso", "Arquivo já existe na pasta de dados."
+                    self,
+                    "Aviso",
+                    "Nenhum arquivo novo foi importado (todos já existem na pasta de dados).",
                 )
 
     def setup_tab_graficos(self):
@@ -258,8 +310,23 @@ class MainWindow(QMainWindow):
         # Painel de opções (filtros + tipo/design)
         opcoes_box = QGroupBox("Opções e Filtros")
         opcoes_box.setStyleSheet(
-            "QGroupBox { background: #e3f2fd; border-radius: 12px; border: 2px solid #1565c0; font-size: 11pt; }"
+            """
+            QGroupBox {
+                background: #fff;
+                border-radius: 10px;
+                border: 1.5px solid #e0e0e0;
+                font-size: 12pt;
+                margin-top: 6px;
+            }
+            QGroupBox:title {
+                color: #1976d2;
+                font-weight: bold;
+                margin-left: 8px;
+                margin-top: 2px;
+            }
+        """
         )
+
         opcoes_layout = QVBoxLayout()
         opcoes_layout.setSpacing(14)
         opcoes_layout.setContentsMargins(16, 18, 16, 18)
@@ -278,14 +345,16 @@ class MainWindow(QMainWindow):
         design_col = QVBoxLayout()
         lbl_design = QLabel("Design:")
         self.combo_design_grafico = QComboBox()
-        self.combo_design_grafico.addItems([
-            "seaborn-v0_8",
-            "tableau-colorblind10",
-            "ggplot",
-            "Solarize_Light2",
-            "classic",
-            "dark_background",
-        ])
+        self.combo_design_grafico.addItems(
+            [
+                "seaborn-v0_8",
+                "tableau-colorblind10",
+                "ggplot",
+                "Solarize_Light2",
+                "classic",
+                "dark_background",
+            ]
+        )
         self.combo_design_grafico.setCurrentText("seaborn-v0_8")
         design_col.addWidget(lbl_design)
         design_col.addWidget(self.combo_design_grafico)
@@ -312,7 +381,16 @@ class MainWindow(QMainWindow):
             opcoes_layout.addWidget(lbl)
             lb = QListWidget()
             lb.setSelectionMode(QListWidget.MultiSelection)
-            lb.setStyleSheet("background: #e3f2fd;")
+            lb.setStyleSheet(
+                """
+                QListWidget {
+                    background: #f5f5f5;
+                    border-radius: 6px;
+                    font-size: 11pt;
+                    padding: 4px;
+                }
+            """
+            )
             setattr(self, attr, lb)
             opcoes_layout.addWidget(lb)
 
@@ -340,7 +418,27 @@ class MainWindow(QMainWindow):
         grafico_layout.addWidget(self.grafico_label)
         grafico_box = QGroupBox("Gráfico")
         grafico_box.setStyleSheet(
-            "QGroupBox { background: #fafafa; border-radius: 10px; border: 2px solid #1565c0; }"
+            """
+            QGroupBox {
+                background: #fff;
+                border-radius: 10px;
+                border: 1.5px solid #1976d2;
+                font-size: 12pt;
+                margin-top: 6px;
+            }
+            QGroupBox:title {
+                color: #1976d2;
+                font-weight: bold;
+                margin-left: 8px;
+                margin-top: 2px;
+            }
+        """
+        )
+        self.grafico_label.setStyleSheet(
+            """
+            background: #fafbfc;
+            border-radius: 10px;
+        """
         )
         grafico_box.setLayout(grafico_layout)
         main_layout.addWidget(grafico_box, 3)
@@ -446,7 +544,7 @@ class MainWindow(QMainWindow):
             file_path = os.path.join(pasta, arquivo)
             df = carregar_planilha(file_path)
             if "Usuário" in df.columns:
-                df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+                df["Usuário"] = df["Usuário"].astype(str).str.strip()
             col_usuario = "Usuário"
             col_agendamento = "Agendamento"
             if "peso" not in df.columns:
@@ -490,7 +588,6 @@ class MainWindow(QMainWindow):
             self.listbox_meses.addItem(str(mes))
 
     def atualizar_kpis(self):
-        # Carregue e consolide todos os arquivos .xlsx da pasta dados_mensais
         pasta = "dados_mensais"
         arquivos = (
             [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")]
@@ -503,58 +600,76 @@ class MainWindow(QMainWindow):
             df = carregar_planilha(file_path)
             if "Usuário" in df.columns:
                 df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
-            dfs.append(df)
+            df = df.loc[:, ~df.columns.duplicated()]
+            if not df.empty:
+                dfs.append(df)
         if not dfs:
-            for lbl in self.kpi_labels.values():
+            for lbl in self.kpi_widgets.values():
                 lbl.setText("--")
             return
         df_total = pd.concat(dfs, ignore_index=True)
+        print("[DEBUG] Linhas:", len(df_total))
+        print("[DEBUG] Colunas:", list(df_total.columns))
+        print(
+            "[DEBUG] Usuários únicos:",
+            df_total["Usuário"].unique() if "Usuário" in df_total.columns else "N/A",
+        )
+        print(
+            "[DEBUG] Soma peso:",
+            df_total["peso"].sum() if "peso" in df_total.columns else "N/A",
+        )
+        print("[DEBUG] Amostra:", df_total.head())
+        df_total = df_total.loc[:, ~df_total.columns.duplicated()]
+        for col in df_total.columns:
+            if (
+                isinstance(col, str)
+                and col.lower().startswith("usu")
+                and col != "Usuário"
+            ):
+                df_total.rename(columns={col: "Usuário"}, inplace=True)
+        # Padronização CRÍTICA:
+        if "Usuário" in df_total.columns:
+            df_total["Usuário"] = (
+                df_total["Usuário"].astype(str).str.strip().str.upper()
+            )
 
-        # Minutas (total de linhas)
         minutas = len(df_total)
-        self.kpi_labels["minutas"].setText(str(minutas))
+        self.kpi_widgets["minutas"].setText(str(minutas))
 
-        # Média Produtividade (média de peso por usuário)
         if "Usuário" in df_total.columns and "peso" in df_total.columns:
-            media = df_total.groupby("Usuário")["peso"].sum().mean()
-            self.kpi_labels["media"].setText(f"{media:.2f}")
+            produtividade = df_total.groupby("Usuário")["peso"].sum()
+            media = produtividade.mean() if not produtividade.empty else 0
+            self.kpi_widgets["media"].setText(f"{media:.2f}")
+            top3 = produtividade.sort_values(ascending=False).head(3)
+            if not top3.empty:
+                top3_txt = "\n".join(
+                    [f"{i+1}º {u}: {p:.1f}" for i, (u, p) in enumerate(top3.items())]
+                )
+                self.kpi_widgets["top3"].setText(top3_txt)
+            else:
+                self.kpi_widgets["top3"].setText("--")
         else:
-            self.kpi_labels["media"].setText("--")
+            self.kpi_widgets["media"].setText("--")
+            self.kpi_widgets["top3"].setText("--")
 
-        # Dia Mais Produtivo (dia com maior soma de peso)
         if "Data criação" in df_total.columns and "peso" in df_total.columns:
-            df_total["data"] = pd.to_datetime(
+            df_total["Data criação"] = pd.to_datetime(
                 df_total["Data criação"], errors="coerce"
-            ).dt.date
-            dias = df_total.groupby("data")["peso"].sum()
+            )
+            df_total = df_total.dropna(subset=["Data criação"])
+            dias = df_total.groupby(df_total["Data criação"].dt.date)["peso"].sum()
             if not dias.empty:
                 dia_mais = dias.idxmax()
                 valor_mais = dias.max()
-                self.kpi_labels["dia"].setText(
+                self.kpi_widgets["dia"].setText(
                     f"{dia_mais.strftime('%d/%m/%Y')} ({valor_mais:.2f})"
                 )
             else:
-                self.kpi_labels["dia"].setText("--")
+                self.kpi_widgets["dia"].setText("--")
         else:
-            self.kpi_labels["dia"].setText("--")
-
-        # Top 3 Usuários (maior soma de peso)
-        if "Usuário" in df_total.columns and "peso" in df_total.columns:
-            top3 = (
-                df_total.groupby("Usuário")["peso"]
-                .sum()
-                .sort_values(ascending=False)
-                .head(3)
-            )
-            top3_txt = "\n".join(
-                [f"{i+1}º {u}: {v:.2f}" for i, (u, v) in enumerate(top3.items())]
-            )
-            self.kpi_labels["top3"].setText(top3_txt)
-        else:
-            self.kpi_labels["top3"].setText("--")
+            self.kpi_widgets["dia"].setText("--")
 
     def atualizar_filtros_grafico(self):
-        # Preenche os filtros de acordo com os dados reais do DataFrame consolidado
         if self.df is None or self.df.empty:
             for lb in [
                 self.filtro_usuario,
@@ -565,7 +680,25 @@ class MainWindow(QMainWindow):
                 lb.clear()
             return
 
-        usuarios = sorted(self.df["Usuário"].dropna().unique())
+        # Busca segura da coluna de usuário
+        col_usuario = "Usuário"
+        if col_usuario not in self.df.columns:
+            # fallback: busca qualquer coluna que comece com "Usu"
+            col_usuario = next(
+                (
+                    c
+                    for c in self.df.columns
+                    if isinstance(c, str) and c.lower().startswith("usu")
+                ),
+                None,
+            )
+        if not col_usuario:
+            usuarios = []
+        else:
+            usuarios = sorted(
+                self.df[col_usuario].dropna().astype(str).str.upper().unique()
+            )
+
         if "Data criação" in self.df.columns:
             self.df["Data criação"] = pd.to_datetime(
                 self.df["Data criação"], errors="coerce", dayfirst=True
@@ -607,9 +740,13 @@ class MainWindow(QMainWindow):
         df_filtrado = self.df.copy()
 
         # Filtro Usuário
-        usuarios_sel = [item.text() for item in self.filtro_usuario.selectedItems()]
+        usuarios_sel = [
+            item.text().upper() for item in self.filtro_usuario.selectedItems()
+        ]
         if usuarios_sel:
-            df_filtrado = df_filtrado[df_filtrado["Usuário"].isin(usuarios_sel)]
+            df_filtrado = df_filtrado[
+                df_filtrado["Usuário"].astype(str).str.upper().isin(usuarios_sel)
+            ]
 
         # Filtro Mês
         meses_sel = [item.text() for item in self.filtro_mes.selectedItems()]
@@ -729,7 +866,6 @@ class MainWindow(QMainWindow):
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmpfile:
             fig.savefig(tmpfile.name, bbox_inches="tight")
             self.grafico_label.setPixmap(QPixmap(tmpfile.name))
-
 
     def setup_tab_config(self):
         layout = QVBoxLayout()
@@ -887,8 +1023,22 @@ class MainWindow(QMainWindow):
             df = carregar_planilha(file_path)
             if "Usuário" in df.columns:
                 df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
-            dfs.append(df)
+            df = df.loc[:, ~df.columns.duplicated()]
+            if not df.empty:
+                dfs.append(df)
         self.df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+        self.df = self.df.loc[:, ~self.df.columns.duplicated()]
+        for col in self.df.columns:
+            if (
+                isinstance(col, str)
+                and col.lower().startswith("usu")
+                and col != "Usuário"
+            ):
+                self.df.rename(columns={col: "Usuário"}, inplace=True)
+        # Padronização CRÍTICA:
+        if "Usuário" in self.df.columns:
+            self.df["Usuário"] = self.df["Usuário"].astype(str).str.strip().str.upper()
+
         self.atualizar_filtros_grafico()
         self.atualizar_kpis()
 
