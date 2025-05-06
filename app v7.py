@@ -1,8 +1,6 @@
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QPixmap, QColor
-from PyQt5.QtGui import QIcon
-from PyQt5.QtGui import QPalette, QColor
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QPixmap, QColor, QIcon, QPalette, QAction
+from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
     QWidget,
@@ -25,7 +23,6 @@ from PyQt5.QtWidgets import (
     QSplashScreen,
     QGraphicsDropShadowEffect,
     QToolBar,
-    QAction,
     QSizePolicy,
 )
 
@@ -33,7 +30,6 @@ QApplication.setFont(QFont("Georgia, Segoe UI, Arial", 12))
 
 import sys
 import os
-import sip
 import pandas as pd
 import calendar
 import tempfile
@@ -45,10 +41,10 @@ import numpy as np
 import time
 import matplotlib
 
-matplotlib.use("Qt5Agg")
+matplotlib.use("QtAgg")
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 plt.close("all")
@@ -213,7 +209,7 @@ class MainWindow(QMainWindow):
         btn_importar.clicked.connect(self.importar_arquivo_excel)
         toolbar.addWidget(btn_importar)
 
-        self.addToolBar(Qt.TopToolBarArea, toolbar)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         # Painel de KPIs moderno e centralizado
         self.kpi_panel = QWidget()
@@ -247,13 +243,13 @@ class MainWindow(QMainWindow):
             lbl_value.setStyleSheet(
                 "font-size: 22px; font-weight: bold; color: #1a232e;"
             )
-            lbl_value.setAlignment(Qt.AlignCenter)
+            lbl_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl_value.setWordWrap(True)
             lbl_title = QLabel(title)
             lbl_title.setStyleSheet(
                 "color: #1a232e; font-size: 13px; font-weight: 400;"
             )
-            lbl_title.setAlignment(Qt.AlignCenter)
+            lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl_title.setWordWrap(True)
             vbox.addWidget(lbl_value)
             vbox.addWidget(lbl_title)
@@ -428,7 +424,7 @@ class MainWindow(QMainWindow):
             lbl.setStyleSheet("font-weight: 500; margin-top: 4px; margin-bottom: 2px;")
             opcoes_layout.addWidget(lbl)
             lb = QListWidget()
-            lb.setSelectionMode(QListWidget.MultiSelection)
+            lb.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
             lb.setStyleSheet(
                 """
                 QListWidget {
@@ -466,7 +462,7 @@ class MainWindow(QMainWindow):
         """
         )
         btn_graph.clicked.connect(self.gerar_grafico_com_filtros)
-        opcoes_layout.addWidget(btn_graph, alignment=Qt.AlignBottom)
+        opcoes_layout.addWidget(btn_graph, alignment=Qt.AlignmentFlag.AlignBottom)
         opcoes_box.setLayout(opcoes_layout)
         main_layout.addWidget(opcoes_box, 1)
 
@@ -497,7 +493,7 @@ class MainWindow(QMainWindow):
         grafico_layout = QVBoxLayout()
         grafico_layout.setContentsMargins(16, 12, 16, 18)
         self.grafico_label = QLabel()
-        self.grafico_label.setAlignment(Qt.AlignCenter)
+        self.grafico_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.grafico_label.setStyleSheet(
             "background: #fff; border: none; border-radius: 10px;"
         )
@@ -526,7 +522,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Selecione os meses para comparar:"))
 
         self.listbox_meses = QListWidget()
-        self.listbox_meses.setSelectionMode(QListWidget.MultiSelection)
+        self.listbox_meses.setSelectionMode(
+            QAbstractItemView.SelectionMode.MultiSelection
+        )
         self.listbox_meses.setMaximumHeight(110)
         self.listbox_meses.setStyleSheet(
             """
@@ -588,8 +586,12 @@ class MainWindow(QMainWindow):
         """
         )
 
-        self.table_comp.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table_comp.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_comp.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.table_comp.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
         layout.addWidget(self.table_comp)
 
         self.tab_comparacao_meses.setLayout(layout)
@@ -707,7 +709,7 @@ class MainWindow(QMainWindow):
             linha.append(f"{total:.2f}")
             for col_idx, valor in enumerate(linha):
                 item = QTableWidgetItem(str(valor))
-                item.setTextAlignment(Qt.AlignCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table_comp.setItem(row_idx, col_idx, item)
 
     def preencher_listbox_meses(self, lista_meses):
@@ -751,7 +753,7 @@ class MainWindow(QMainWindow):
                         item.setForeground(QColor(cor))
                     else:
                         item.setForeground(QColor("#1a232e"))  # Padrão sóbrio
-                item.setTextAlignment(Qt.AlignCenter)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.table_comp.setItem(row_idx, col_idx, item)
 
     def atualizar_kpis(self):
@@ -1037,7 +1039,9 @@ class MainWindow(QMainWindow):
         self.table_pesos = QTableWidget()
         self.table_pesos.setColumnCount(2)
         self.table_pesos.setHorizontalHeaderLabels(["Tipo de Agendamento", "Peso"])
-        self.table_pesos.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_pesos.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self.table_pesos.setStyleSheet(
             """
             QTableWidget {
@@ -1112,7 +1116,7 @@ class MainWindow(QMainWindow):
         self.table_pesos.setRowCount(len(tipos))
         for row, tipo in enumerate(tipos):
             item_tipo = QTableWidgetItem(str(tipo))
-            item_tipo.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            item_tipo.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
             self.table_pesos.setItem(row, 0, item_tipo)
             item_peso = QTableWidgetItem(str(self.gerenciador_pesos.obter_peso(tipo)))
             self.table_pesos.setItem(row, 1, item_peso)
@@ -1137,15 +1141,13 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Configuração", "Pesos carregados do arquivo.")
 
     def restaurar_pesos_padrao(self):
-        from PyQt5.QtWidgets import QMessageBox
-
         resposta = QMessageBox.question(
             self,
             "Restaurar Padrão",
             "Deseja restaurar todos os pesos para 1.0?",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if resposta == QMessageBox.Yes:
+        if resposta == QMessageBox.StandardButton.Yes:
             self.gerenciador_pesos.pesos = defaultdict(lambda: 1.0)
             self.gerenciador_pesos.salvar_pesos()
             self.atualizar_tabela_pesos()
@@ -1230,9 +1232,9 @@ class MainWindow(QMainWindow):
             self,
             "Confirmação",
             "Você tem certeza que deseja excluir os dados dos meses?",
-            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if resposta != QMessageBox.Yes:
+        if resposta != QMessageBox.StandardButton.Yes:
             return
         pasta_dados_mensais = "dados_mensais"
         if os.path.exists(pasta_dados_mensais):
@@ -1347,7 +1349,6 @@ class MainWindow(QMainWindow):
             not getattr(self, "_canvas_valido", True)
             or not hasattr(self, "canvas_grafico")
             or self.canvas_grafico is None
-            or sip.isdeleted(self.canvas_grafico)
         ):
             return
         self.gerar_grafico_com_filtros()
@@ -1373,11 +1374,11 @@ if __name__ == "__main__":
         QTableWidget::item:focus, QTableView::item:focus {
             outline: none;
         }
-    """
+        """
     )
 
     splash_pix = QPixmap("splash_loading.png")  # Use o caminho da sua imagem
-    splash = QSplashScreen(splash_pix, Qt.WindowStaysOnTopHint)
+    splash = QSplashScreen(splash_pix, Qt.WindowType.WindowStaysOnTopHint)
     splash.show()
     app.processEvents()
 
@@ -1389,4 +1390,4 @@ if __name__ == "__main__":
     # Garante que a splash fique visível por pelo menos 2 segundos (2000 ms)
     QTimer.singleShot(2000, start_main)
 
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
