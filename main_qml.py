@@ -1,31 +1,41 @@
 import sys
-import os
-import os
-
-os.environ["QT_QUICK_CONTROLS_STYLE"] = "Fusion"
-
-from PyQt6.QtCore import QLibraryInfo
-
-print("Qt Plugins Path:", QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
-print("Arquivo QML existe?", os.path.isfile("MainWindow.qml"))
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtQml import QQmlApplicationEngine
-from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, QTimer
-
-app = QApplication(sys.argv)
-engine = QQmlApplicationEngine()
 
 
 class KpiModel(QObject):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    valorChanged = pyqtSignal()
+
+    def __init__(self, valor=0):
+        super().__init__()
+        self._valor = valor
+
+    def get_valor(self):
+        return self._valor
+
+    def set_valor(self, v):
+        if self._valor != v:
+            self._valor = v
+            self.valorChanged.emit()
+
+    valor = pyqtProperty(int, fget=get_valor, fset=set_valor, notify=valorChanged)
 
 
-kpi_model = KpiModel()
-engine.rootContext().setContextProperty("kpiModel", kpi_model)
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    engine = QQmlApplicationEngine()
 
-engine.load("MainWindow.qml")
-app.exec()
+    # Exemplo: valor inicial do KPI
+    kpi_model = KpiModel(valor=123)
+    engine.rootContext().setContextProperty("kpiModel", kpi_model)
+
+    # Carrega o arquivo QML
+    engine.load("MainWindow.qml")
+
+    if not engine.rootObjects():
+        sys.exit(-1)
+    sys.exit(app.exec())
 
 
 class KPIs(QObject):
