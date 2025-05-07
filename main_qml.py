@@ -5,6 +5,7 @@ import os
 os.environ["QT_QUICK_CONTROLS_STYLE"] = "Fusion"
 
 from PyQt6.QtCore import QLibraryInfo
+
 print("Qt Plugins Path:", QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))
 print("Arquivo QML existe?", os.path.isfile("MainWindow.qml"))
 from PyQt6.QtWidgets import QApplication
