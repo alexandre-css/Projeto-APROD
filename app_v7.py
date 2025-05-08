@@ -144,7 +144,7 @@ class GerenciadorPesosAgendamento:
 
 
 class MplCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
+    def __init__(self, width=5, height=4, dpi=100):
         fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(111)
         super().__init__(fig)
@@ -194,7 +194,8 @@ class MainWindow(QMainWindow):
             }
         """
         )
-        icon_upload = QIcon.fromTheme("document-open")
+        # Removed unused variable 'icon_upload'
+        QIcon.fromTheme("document-open")
         btn_importar = QPushButton("Importar Excel")
         btn_importar.setStyleSheet(
             """
@@ -325,11 +326,18 @@ class MainWindow(QMainWindow):
             os.makedirs(pasta, exist_ok=True)
             arquivos_importados = 0
             for path in paths:
-                nome_destino = os.path.basename(path)
-                destino = os.path.join(pasta, nome_destino)
-                if not os.path.exists(destino):
-                    shutil.copy2(path, destino)
-                    arquivos_importados += 1
+                try:
+                    nome_destino = os.path.basename(path)
+                    destino = os.path.join(pasta, nome_destino)
+                    if not os.path.exists(destino):
+                        shutil.copy2(path, destino)
+                        arquivos_importados += 1
+                except Exception as e:
+                    QMessageBox.warning(
+                        self,
+                        "Erro",
+                        f"Erro ao importar o arquivo '{path}': {str(e)}",
+                    )
             if arquivos_importados:
                 QMessageBox.information(
                     self,
@@ -517,6 +525,7 @@ class MainWindow(QMainWindow):
         self.filtro_mes.itemSelectionChanged.connect(self._debounce_grafico)
         self.filtro_tipo.itemSelectionChanged.connect(self._debounce_grafico)
         self.filtro_agendamento.itemSelectionChanged.connect(self._debounce_grafico)
+    
         self._canvas_valido = True
 
     def _debounce_grafico(self):
