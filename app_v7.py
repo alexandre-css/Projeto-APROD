@@ -451,7 +451,7 @@ class MainWindow(QMainWindow):
                     selection-background-color: rgba(189, 158, 87, 0.25);
                     selection-color: #1a232e;
                 }
-            """
+                """
             )
             setattr(self, attr, lb)
             opcoes_layout.addWidget(lb)

@@ -9,6 +9,7 @@ ApplicationWindow {
     width: 1440
     height: 900
     visible: true
+    visibility: ApplicationWindow.Maximized
     Material.theme: Material.Light
     Material.primary: "#3cb3e6"
     Material.accent: "#1976d2"
@@ -46,7 +47,7 @@ ApplicationWindow {
                             "peso.png",
                             "settings.png"
                         ]
-                        delegate: Image {
+                        Image {
                             source: "assets/icons/" + modelData
                             width: 56
                             height: 56
@@ -68,27 +69,28 @@ ApplicationWindow {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 0
-                    spacing: 16
+                    spacing: 7000
 
                     // BLOCO DE CONTEÚDO PRINCIPAL COM MARGEM À ESQUERDA
                     ColumnLayout {
                         width: 1220
                         anchors.left: parent.left
                         anchors.leftMargin: 32
-                        spacing: 16
+                        spacing: 5
 
-                        Item { height: 60 }
+                        Item { height: 5 }
 
                         // === KPIs DINÂMICOS NO TOPO ===
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: 24
+                            spacing: 16
 
                             Rectangle {
                                 width: 340; height: 100
                                 color: "#fff"
                                 radius: 14
-                                border.color: "#e0e0e0"
+                                border.color: "#3cb3e6"
+                                border.width: 2
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 4
@@ -112,7 +114,8 @@ ApplicationWindow {
                                 width: 340; height: 100
                                 color: "#fff"
                                 radius: 14
-                                border.color: "#e0e0e0"
+                                border.color: "#3cb3e6"
+                                border.width: 2
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 4
@@ -136,7 +139,8 @@ ApplicationWindow {
                                 width: 340; height: 100
                                 color: "#fff"
                                 radius: 14
-                                border.color: "#e0e0e0"
+                                border.color: "#3cb3e6"
+                                border.width: 2
                                 Column {
                                     anchors.centerIn: parent
                                     spacing: 4
@@ -159,8 +163,10 @@ ApplicationWindow {
                                 }
                             }
                         }
+                        
+                        Item { height: 40 }
 
-                        // BOTÃO IMPORTAR EXCEL COM GRADIENTE E ANIMAÇÃO (SEM DropShadow)
+                        // BOTÃO IMPORTAR EXCEL
                         Rectangle {
                             id: importButton
                             width: 220
@@ -203,14 +209,47 @@ ApplicationWindow {
                             }
                         }
 
-                        // GRÁFICO DE BARRAS HORIZONTAIS COM DEGRADÊ NAS BARRAS
+                        // Botão Arquivos Carregados
+                        Rectangle {
+                            id: arquivosCarregadosBox
+                            width: 480
+                            height: 48
+                            radius: 10
+                            border.color: "#3cb3e6"
+                            border.width: 2
+                            color: "#fff"
+                            anchors.left: importButton.right
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: importButton.verticalCenter
+
+                            RowLayout {
+                                anchors.fill: parent
+                                spacing: 0
+                                Text {
+                                    id: arquivosCarregadosText
+                                    text: backend.arquivosCarregados
+                                    color: "#3cb3e6"
+                                    font.pixelSize: 16
+                                    font.bold: false
+                                    font.family: "Arial"
+                                    horizontalAlignment: Text.AlignLeft
+                                    verticalAlignment: Text.AlignVCenter
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 18
+                                    elide: Text.ElideRight
+                                    wrapMode: Text.NoWrap
+                                    clip: true
+                                }
+                            }
+                        }
+
+                        // GRÁFICO DE BARRAS HORIZONTAIS
                         Rectangle {
                             width: 1150
-                            height: 800
+                            height: 700
                             radius: 22
                             border.color: "#e0e0e0"
                             anchors.left: parent.left
-
                             ChartView {
                                 anchors.fill: parent
                                 antialiasing: true
@@ -224,20 +263,17 @@ ApplicationWindow {
                                     axisY: eixoUsuarios
                                     axisX: eixoValores
                                     barWidth: 0.2
-
                                     labelsVisible: true
                                     labelsFormat: "@value"
                                     labelsPosition: AbstractBarSeries.LabelsOutsideEnd
-
                                     BarSet {
                                         label: "Minutas"
                                         values: backend.valores
-                                        brushFilename: "assets/gradients/bargradient.png" // degradê aplicado às barras
+                                        brushFilename: "assets/gradients/bargradient.png"
                                         labelFont: Qt.font({ pixelSize: 16, bold: true, family: "Arial" })
                                         labelColor: "#1976d2"
                                     }
                                 }
-
                                 BarCategoryAxis {
                                     id: eixoUsuarios
                                     categories: backend.nomes
@@ -249,13 +285,11 @@ ApplicationWindow {
                                     max: 280
                                     labelFormat: "%.0f"
                                 }
-
                                 title: "Minutas por Usuário"
-                                titleFont.pixelSize: 12
+                                titleFont: Qt.font({ pixelSize: 12, bold: true, family: "Arial" })
                                 titleColor: "#1976d2"
                             }
                         }
-                        Item { Layout.fillHeight: true }
                     }
                 }
             }
