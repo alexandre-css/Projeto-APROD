@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
-import QtQuick.Effects
 import QtCharts
 
 ApplicationWindow {
@@ -66,27 +65,27 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 0
-                    spacing: 7000
+                // CONTAINER PRINCIPAL RESPONSIVO, ALINHADO À ESQUERDA
+                Item {
+                    width: Math.min(parent.width - 160, 1600)
+                    anchors.left: parent.left
+                    anchors.leftMargin: 64
 
-                    // BLOCO DE CONTEÚDO PRINCIPAL COM MARGEM À ESQUERDA
                     ColumnLayout {
-                        width: 1220
-                        anchors.left: parent.left
-                        anchors.leftMargin: 32
-                        spacing: 5
+                        width: parent.width
+                        spacing: 16
 
-                        Item { height: 5 }
+                        Item { height: 40 } // Espaço do topo
 
-                        // === KPIs DINÂMICOS NO TOPO ===
+                        // KPIs EM GRID RESPONSIVO
                         RowLayout {
                             Layout.fillWidth: true
-                            spacing: 16
+                            spacing: 32
 
                             Rectangle {
-                                width: 340; height: 100
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 320
+                                height: 100
                                 color: "#fff"
                                 radius: 14
                                 border.color: "#3cb3e6"
@@ -111,7 +110,9 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle {
-                                width: 340; height: 100
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 320
+                                height: 100
                                 color: "#fff"
                                 radius: 14
                                 border.color: "#3cb3e6"
@@ -136,7 +137,9 @@ ApplicationWindow {
                                 }
                             }
                             Rectangle {
-                                width: 340; height: 100
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 320
+                                height: 100
                                 color: "#fff"
                                 radius: 14
                                 border.color: "#3cb3e6"
@@ -163,93 +166,92 @@ ApplicationWindow {
                                 }
                             }
                         }
-                        
-                        Item { height: 40 }
 
-                        // BOTÃO IMPORTAR EXCEL
-                        Rectangle {
-                            id: importButton
-                            width: 220
-                            height: 48
-                            radius: 8
-                            anchors.left: parent.left
-                            gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#3cb3e6" }
-                                GradientStop { position: 1.0; color: "#1976d2" }
-                            }
-                            property bool hovered: false
-                            property bool pressed: false
-                            scale: pressed ? 0.95 : (hovered ? 1.05 : 1.0)
-                            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-                            MouseArea {
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                onEntered: importButton.hovered = true
-                                onExited: importButton.hovered = false
-                                onPressed: importButton.pressed = true
-                                onReleased: importButton.pressed = false
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: backend.importar_arquivo_excel()
-                            }
-                            RowLayout {
-                                anchors.centerIn: parent
-                                spacing: 8
-                                Image {
-                                    source: "assets/icons/excel.png"
-                                    width: 28
-                                    height: 28
-                                    fillMode: Image.PreserveAspectFit
+                        Item { height: 40 } // Espaço entre KPIs e botões
+
+                        // BOTÕES CENTRALIZADOS
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 16
+
+                            Rectangle {
+                                id: importButton
+                                width: 220
+                                height: 48
+                                radius: 8
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: "#3cb3e6" }
+                                    GradientStop { position: 1.0; color: "#1976d2" }
                                 }
-                                Text {
-                                    text: "Importar Excel"
-                                    color: "#fff"
-                                    font.bold: true
-                                    font.pixelSize: 17
+                                property bool hovered: false
+                                property bool pressed: false
+                                scale: pressed ? 0.95 : (hovered ? 1.05 : 1.0)
+                                Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onEntered: importButton.hovered = true
+                                    onExited: importButton.hovered = false
+                                    onPressed: importButton.pressed = true
+                                    onReleased: importButton.pressed = false
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: backend.importar_arquivo_excel()
+                                }
+                                RowLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 8
+                                    Image {
+                                        source: "assets/icons/excel.png"
+                                        width: 28
+                                        height: 28
+                                        fillMode: Image.PreserveAspectFit
+                                    }
+                                    Text {
+                                        text: "Importar Excel"
+                                        color: "#fff"
+                                        font.bold: true
+                                        font.pixelSize: 17
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                id: arquivosCarregadosBox
+                                width: 480
+                                height: 48
+                                radius: 10
+                                border.color: "#3cb3e6"
+                                border.width: 2
+                                color: "#fff"
+                                RowLayout {
+                                    anchors.fill: parent
+                                    spacing: 0
+                                    Text {
+                                        id: arquivosCarregadosText
+                                        text: backend.arquivosCarregados
+                                        color: "#3cb3e6"
+                                        font.pixelSize: 16
+                                        font.bold: false
+                                        font.family: "Arial"
+                                        horizontalAlignment: Text.AlignLeft
+                                        verticalAlignment: Text.AlignVCenter
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 18
+                                        elide: Text.ElideRight
+                                        wrapMode: Text.NoWrap
+                                        clip: true
+                                    }
                                 }
                             }
                         }
 
-                        // Botão Arquivos Carregados
+                        // GRÁFICO RESPONSIVO E LIMITADO
                         Rectangle {
-                            id: arquivosCarregadosBox
-                            width: 480
-                            height: 48
-                            radius: 10
-                            border.color: "#3cb3e6"
-                            border.width: 2
-                            color: "#fff"
-                            anchors.left: importButton.right
-                            anchors.leftMargin: 16
-                            anchors.verticalCenter: importButton.verticalCenter
-
-                            RowLayout {
-                                anchors.fill: parent
-                                spacing: 0
-                                Text {
-                                    id: arquivosCarregadosText
-                                    text: backend.arquivosCarregados
-                                    color: "#3cb3e6"
-                                    font.pixelSize: 16
-                                    font.bold: false
-                                    font.family: "Arial"
-                                    horizontalAlignment: Text.AlignLeft
-                                    verticalAlignment: Text.AlignVCenter
-                                    anchors.left: parent.left
-                                    anchors.leftMargin: 18
-                                    elide: Text.ElideRight
-                                    wrapMode: Text.NoWrap
-                                    clip: true
-                                }
-                            }
-                        }
-
-                        // GRÁFICO DE BARRAS HORIZONTAIS
-                        Rectangle {
-                            width: 1150
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 1800
                             height: 700
                             radius: 22
                             border.color: "#e0e0e0"
-                            anchors.left: parent.left
                             ChartView {
                                 anchors.fill: parent
                                 antialiasing: true
