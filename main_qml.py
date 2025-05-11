@@ -8,6 +8,8 @@ import sys, os, shutil
 import pandas as pd
 import re
 
+print("DIRETÓRIO DE TRABALHO:", os.getcwd())
+
 os.environ["QT_QUICK_CONTROLS_STYLE"] = "Material"
 
 MESES_PT = {

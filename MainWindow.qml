@@ -26,35 +26,84 @@ ApplicationWindow {
             spacing: 0
 
             // MENU LATERAL
+            // Dentro do seu Rectangle do menu lateral:
             Rectangle {
-                width: 110
+                id: sidebar
+                width: hovered ? 220 : 110
                 color: "#fff"
                 border.color: "#e0e0e0"
                 Layout.fillHeight: true
                 z: 3
+                property bool hovered: false
+
+                Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onEntered: sidebar.hovered = true
+                    onExited: sidebar.hovered = false
+                    cursorShape: Qt.PointingHandCursor
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
-                    spacing: 50
+                    spacing: 40
 
                     Item { Layout.fillHeight: true }
 
                     Repeater {
                         model: [
-                            "dashboard.png",
-                            "compara.png",
-                            "bars.png",
-                            "peso.png",
-                            "settings.png"
+                            { icon: "dashboard.png", label: "Dashboard" },
+                            { icon: "compara.png", label: "Comparar" },
+                            { icon: "bars.png", label: "Gráficos" },
+                            { icon: "peso.png", label: "Peso" },
+                            { icon: "settings.png", label: "Configurações" }
                         ]
-                        Image {
-                            source: "assets/icons/" + modelData
-                            width: 56
-                            height: 56
-                            fillMode: Image.PreserveAspectFit
-                            Layout.alignment: Qt.AlignHCenter
+                        RowLayout {
+                            Layout.alignment: Qt.AlignLeft
+                            spacing: 14
+                            width: parent.width
+
+                            // Espaçador à esquerda para afastar do canto do menu
+                            Item {
+                                width: 15 // ajuste conforme necessário para o visual institucional
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+
+                            Image {
+                                source: modelData.icon ? "assets/icons/" + modelData.icon : ""
+                                Layout.preferredWidth: 56
+                                Layout.preferredHeight: 56
+                                Layout.minimumWidth: 56
+                                Layout.minimumHeight: 56
+                                Layout.maximumWidth: 56
+                                Layout.maximumHeight: 56
+                                fillMode: Image.PreserveAspectFit
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            Text {
+                                text: modelData.label ? modelData.label : ""
+                                visible: sidebar.hovered
+                                opacity: sidebar.hovered ? 1 : 0
+                                font.pixelSize: 17
+                                color: "#232946"
+                                verticalAlignment: Text.AlignVCenter
+                                horizontalAlignment: Text.AlignLeft
+                                elide: Text.ElideRight
+                                width: 120
+                                Layout.alignment: Qt.AlignVCenter
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
+                            }
+                            // Espaçador invisível para ocupar o resto do espaço
+                            Item {
+                                Layout.fillWidth: true
+                                visible: sidebar.hovered
+                            }
                         }
                     }
+
+
 
                     Item { Layout.fillHeight: true }
                 }
@@ -80,6 +129,7 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: 18
 
+                        // KPI 1: Total de Minutas
                         Rectangle {
                             Layout.preferredWidth: 320
                             height: 110
@@ -100,8 +150,12 @@ ApplicationWindow {
                                 spacing: 12
                                 Image {
                                     source: "assets/icons/sum.png"
-                                    width: 38
-                                    height: 38
+                                    Layout.preferredWidth: 38
+                                    Layout.preferredHeight: 38
+                                    Layout.minimumWidth: 38
+                                    Layout.minimumHeight: 38
+                                    Layout.maximumWidth: 38
+                                    Layout.maximumHeight: 38
                                     fillMode: Image.PreserveAspectFit
                                 }
                                 Column {
@@ -115,7 +169,7 @@ ApplicationWindow {
                                         wrapMode: Text.NoWrap
                                     }
                                     Text {
-                                        text: kpis.minutas
+                                        text: kpis && kpis.minutas ? kpis.minutas : ""
                                         font.pixelSize: 34
                                         color: "#232946"
                                         font.bold: true
@@ -125,6 +179,8 @@ ApplicationWindow {
                                 }
                             }
                         }
+
+                        // KPI 2: Dia Mais Produtivo
                         Rectangle {
                             Layout.preferredWidth: 320
                             height: 110
@@ -145,8 +201,12 @@ ApplicationWindow {
                                 spacing: 12
                                 Image {
                                     source: "assets/icons/calendar.png"
-                                    width: 38
-                                    height: 38
+                                    Layout.preferredWidth: 38
+                                    Layout.preferredHeight: 38
+                                    Layout.minimumWidth: 38
+                                    Layout.minimumHeight: 38
+                                    Layout.maximumWidth: 38
+                                    Layout.maximumHeight: 38
                                     fillMode: Image.PreserveAspectFit
                                 }
                                 Column {
@@ -160,7 +220,7 @@ ApplicationWindow {
                                         wrapMode: Text.NoWrap
                                     }
                                     Text {
-                                        text: kpis.dia
+                                        text: kpis && kpis.dia ? kpis.dia : ""
                                         font.pixelSize: 20
                                         color: "#232946"
                                         font.bold: true
@@ -170,6 +230,8 @@ ApplicationWindow {
                                 }
                             }
                         }
+
+                        // KPI 3: Top 3 Usuários
                         Rectangle {
                             Layout.preferredWidth: 320
                             height: 110
@@ -190,8 +252,12 @@ ApplicationWindow {
                                 spacing: 12
                                 Image {
                                     source: "assets/icons/top.png"
-                                    width: 38
-                                    height: 38
+                                    Layout.preferredWidth: 45
+                                    Layout.preferredHeight: 45
+                                    Layout.minimumWidth: 45
+                                    Layout.minimumHeight: 45
+                                    Layout.maximumWidth: 45
+                                    Layout.maximumHeight: 45
                                     fillMode: Image.PreserveAspectFit
                                 }
                                 Column {
@@ -206,7 +272,7 @@ ApplicationWindow {
                                         width: 180
                                     }
                                     Text {
-                                        text: kpis.top3
+                                        text: kpis && kpis.top3 ? kpis.top3 : ""
                                         font.pixelSize: 12
                                         color: "#232946"
                                         font.bold: true
@@ -323,7 +389,7 @@ ApplicationWindow {
                                 }
 
                                 Text {
-                                    text: backend.arquivosCarregados
+                                    text: backend && backend.arquivosCarregados ? backend.arquivosCarregados : ""
                                     font.pixelSize: 17
                                     font.bold: true
                                     color: "#232946"
@@ -334,8 +400,6 @@ ApplicationWindow {
                                 }
                             }
                         }
-
-
                     }
 
                     // Espaço entre botões/campo de meses e gráfico
@@ -367,7 +431,7 @@ ApplicationWindow {
                                 labelsPosition: AbstractBarSeries.LabelsOutsideEnd
                                 BarSet {
                                     label: "Minutas"
-                                    values: backend.valores
+                                    values: backend && backend.valores ? backend.valores : []
                                     brushFilename: "assets/gradients/bargradient.png"
                                     labelFont: Qt.font({ pixelSize: 16, bold: true, family: "Arial" })
                                     labelColor: "#1976d2"
