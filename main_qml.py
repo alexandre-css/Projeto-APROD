@@ -86,41 +86,38 @@ class Backend(QObject):
             media_qml = f"{media:.2f}"
             top3 = produtividade.sort_values(ascending=False).head(3)
             if not top3.empty:
-                # Top 3 sempre em uma linha só, separado por " | "
-                top3_qml = " | ".join(
-                    [f"{i+1}º {u}: {p:.1f}" for i, (u, p) in enumerate(top3.items())]
-                )
+                # Cada linha: NOME: VALOR
+                top3_qml = "\n".join([f"{u}: {p:.1f}" for u, p in top3.items()])
             else:
                 top3_qml = "--"
         elif "Usuário" in df_total.columns:
             contagem = df_total.groupby("Usuário").size()
             top3 = contagem.sort_values(ascending=False).head(3)
-            if not top3.empty:
-                top3_qml = ", ".join(
-                    [f"{i+1}º {u}" for i, (u, p) in enumerate(top3.items())]
-                )
-            else:
-                top3_qml = "--"
-        else:
-            media_qml = "--"
-            top3_qml = "--"
-        dia_qml = "--"
+            # Se quiser mostrar só os nomes, use:
+            # top3_qml = "\n".join([u for u in top3.index])
+            # Se quiser nome e contagem:
+            top3_qml = "\n".join([f"{u}: {p}" for u, p in top3.items()])
         if "Data criação" in df_total.columns and "peso" in df_total.columns:
             df_total["Data criação"] = pd.to_datetime(
                 df_total["Data criação"], errors="coerce"
             )
             df_total = df_total.dropna(subset=["Data criação"])
-            dias = df_total.groupby(df_total["Data criação"].dt.date)["peso"].sum()
-            if not dias.empty:
-                dia_mais = dias.idxmax()
-                valor_mais = dias.max()
-                dia_qml = f"{dia_mais.strftime('%d/%m/%Y')} ({valor_mais:.2f})"
+            # Extrai o número do dia da semana (0=segunda, 6=domingo)
+            df_total["dia_semana"] = df_total["Data criação"].dt.dayofweek
+            dias_semana = {0: "segunda", 1: "terça", 2: "quarta", 3: "quinta", 4: "sexta", 5: "sábado", 6: "domingo"}
+            produtividade_semana = df_total.groupby("dia_semana")["peso"].sum()
+            if not produtividade_semana.empty:
+                dia_mais = produtividade_semana.idxmax()
+                valor_mais = produtividade_semana.max()
+                dia_qml = f"{dias_semana[dia_mais].capitalize()} ({valor_mais:.2f})"
             else:
                 dia_qml = "--"
         else:
             dia_qml = "--"
+
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.atualizar_kpis(minutas_qml, media_qml, dia_qml, top3_qml)
+
 
     @pyqtSlot()
     def atualizar_arquivos_carregados(self):
@@ -135,11 +132,12 @@ class Backend(QObject):
                 periodo = self.mainwindow.extrair_mes_ano_do_arquivo(file_path)
                 if periodo and "/" in periodo:
                     periodos.append(periodo)
+            # Agora exibe apenas os meses, sem prefixo
             self._arquivosCarregados = (
-                "arquivos carregados: " + " - ".join(periodos)
-                if periodos else "Nenhum arquivo carregado"
+                " - ".join(periodos) if periodos else "Nenhum arquivo carregado"
             )
         self.arquivosCarregadosChanged.emit()
+
 
     @pyqtSlot()
     def atualizar_grafico(self):
@@ -411,6 +409,7 @@ if __name__ == "__main__":
 
     backend.atualizar_grafico()
     backend.atualizar_kpis()
+    backend.arquivosCarregados
 
     qml_file = os.path.join(os.path.dirname(__file__), "MainWindow.qml")
     if not os.path.exists(qml_file):
@@ -422,3 +421,4 @@ if __name__ == "__main__":
         QMessageBox.critical(None, "Error", "Failed to load QML file.")
         sys.exit(0)
     sys.exit(app.exec())
+
