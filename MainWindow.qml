@@ -39,12 +39,11 @@ ApplicationWindow {
 
                 Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
 
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onEntered: sidebar.hovered = true
-                    onExited: sidebar.hovered = false
+                HoverHandler {
+                    id: hoverHandler
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     cursorShape: Qt.PointingHandCursor
+                    onHoveredChanged: sidebar.hovered = hovered
                 }
 
                 ColumnLayout {
