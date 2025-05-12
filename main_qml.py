@@ -88,23 +88,23 @@ class Backend(QObject):
             media_qml = f"{media:.2f}"
             top3 = produtividade.sort_values(ascending=False).head(3)
             if not top3.empty:
-                # Cada linha: NOME: VALOR
+                #& Cada linha: NOME: VALOR
                 top3_qml = "\n".join([f"{u}: {p:.1f}" for u, p in top3.items()])
             else:
                 top3_qml = "--"
         elif "Usuário" in df_total.columns:
             contagem = df_total.groupby("Usuário").size()
             top3 = contagem.sort_values(ascending=False).head(3)
-            # Se quiser mostrar só os nomes, use:
-            # top3_qml = "\n".join([u for u in top3.index])
-            # Se quiser nome e contagem:
+            #& Se quiser mostrar só os nomes, use:
+            #& top3_qml = "\n".join([u for u in top3.index])
+            #& Se quiser nome e contagem:
             top3_qml = "\n".join([f"{u}: {p}" for u, p in top3.items()])
         if "Data criação" in df_total.columns and "peso" in df_total.columns:
             df_total["Data criação"] = pd.to_datetime(
-                df_total["Data criação"], errors="coerce"
+                df_total["Data criação"], errors="coerce", dayfirst=True
             )
             df_total = df_total.dropna(subset=["Data criação"])
-            # Extrai o número do dia da semana (0=segunda, 6=domingo)
+            #& Extrai o número do dia da semana (0=segunda, 6=domingo)
             df_total["dia_semana"] = df_total["Data criação"].dt.dayofweek
             dias_semana = {0: "segunda", 1: "terça", 2: "quarta", 3: "quinta", 4: "sexta", 5: "sábado", 6: "domingo"}
             produtividade_semana = df_total.groupby("dia_semana")["peso"].sum()
@@ -114,12 +114,8 @@ class Backend(QObject):
                 dia_qml = f"{dias_semana[dia_mais].capitalize()} ({valor_mais:.2f})"
             else:
                 dia_qml = "--"
-        else:
-            dia_qml = "--"
-
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.atualizar_kpis(minutas_qml, media_qml, dia_qml, top3_qml)
-
 
     @pyqtSlot()
     def atualizar_arquivos_carregados(self):
@@ -134,12 +130,11 @@ class Backend(QObject):
                 periodo = self.mainwindow.extrair_mes_ano_do_arquivo(file_path)
                 if periodo and "/" in periodo:
                     periodos.append(periodo)
-            # Agora exibe apenas os meses, sem prefixo
+            #& Agora exibe apenas os meses, sem prefixo
             self._arquivosCarregados = (
                 " - ".join(periodos) if periodos else "Nenhum arquivo carregado"
             )
         self.arquivosCarregadosChanged.emit()
-
 
     @pyqtSlot()
     def atualizar_grafico(self):
@@ -199,17 +194,52 @@ class Backend(QObject):
         self.mainwindow.importar_arquivo_excel()
         self.atualizar_arquivos_carregados()
 
+    #& Aqui começam os métodos de atribuição de pesos.
 
-    def chave_mes_ano(self, mes_ano):
-        try:
-            mes, ano = mes_ano.split("/")
-            meses = [
-                "jan", "fev", "mar", "abr", "mai", "jun",
-                "jul", "ago", "set", "out", "nov", "dez"
-            ]
-            return int(ano), meses.index(mes.lower())
-        except Exception:
-            return (0, 0)
+    @pyqtSlot(int, float)
+    def atualizarPeso(self, index, novo_peso):
+        """
+        Atualiza o peso de um tipo de agendamento, dado o índice na lista de nomes.
+        """
+        if hasattr(self.mainwindow, "gerenciador_pesos"):
+            nome = self.nomes[index] if 0 <= index < len(self.nomes) else None
+            if nome:
+                self.mainwindow.gerenciador_pesos.atualizar_peso(nome, novo_peso)
+                self.mainwindow.gerenciador_pesos.salvar_pesos()
+                self.atualizar_grafico()
+                self.atualizar_kpis()
+                self.nomesChanged.emit()
+                self.valoresChanged.emit()
+    @pyqtSlot()
+    def salvarPesos(self):
+        """
+        Salva os pesos atuais no arquivo JSON.
+        """
+        if hasattr(self.mainwindow, "gerenciador_pesos"):
+            self.mainwindow.gerenciador_pesos.salvar_pesos()
+    @pyqtSlot()
+    def carregarPesos(self):
+        """
+        Carrega pesos do arquivo JSON e atualiza a tabela.
+        """
+        if hasattr(self.mainwindow, "gerenciador_pesos"):
+            self.mainwindow.gerenciador_pesos.carregar_pesos()
+            self.atualizar_grafico()
+            self.atualizar_kpis()
+            self.nomesChanged.emit()
+            self.valoresChanged.emit()
+    @pyqtSlot()
+    def restaurarPesosPadrao(self):
+        """
+        Restaura todos os pesos para 1.0 e salva.
+        """
+        if hasattr(self.mainwindow, "gerenciador_pesos"):
+            self.mainwindow.gerenciador_pesos.pesos = defaultdict(lambda: 1.0)
+            self.mainwindow.gerenciador_pesos.salvar_pesos()
+            self.atualizar_grafico()
+            self.atualizar_kpis()
+            self.nomesChanged.emit()
+            self.valoresChanged.emit()
 
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
@@ -242,22 +272,40 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Main Window")
 
+    def chave_mes_ano(self, mes_ano):
+        try:
+            mes, ano = mes_ano.split("/")
+            meses = [
+                "jan", "fev", "mar", "abr", "mai", "jun",
+                "jul", "ago", "set", "out", "nov", "dez"
+            ]
+            return int(ano), meses.index(mes.lower())
+        except Exception:
+            return (0, 0)
+
     def extrair_mes_ano_do_arquivo(self, file_path):
-            try:
-                df = carregar_planilha(file_path)
-                if "Data criação" in df.columns:
-                    datas = pd.to_datetime(
-                        df["Data criação"], errors="coerce", dayfirst=True
-                    )
-                    if not datas.isnull().all():
-                        data = datas.dropna().iloc[0]
-                        mes_ingles = data.strftime("%b")
-                        mes_pt = MESES_PT.get(mes_ingles, mes_ingles.lower())
-                        return f"{mes_pt}/{data.strftime('%Y')}"
-            except Exception as e:
-                print(f"Erro: {e}")
-            # Sempre retorna algo!
-            return os.path.basename(file_path).replace(".xlsx", "")
+        try:
+            df = carregar_planilha(file_path)
+            if "Data criação" in df.columns and not df.empty:
+                #&@ Converte explicitamente para datetime, sempre com dayfirst=True
+                datas = pd.to_datetime(df["Data criação"], errors="coerce", dayfirst=True)
+                datas = datas.dropna()
+                if not datas.empty:
+                    #& Usa o mês/ano mais frequente (modo), que é o mais representativo do arquivo
+                    mes_anos = datas.dt.strftime("%m/%Y")
+                    mes_ano_mais_frequente = mes_anos.mode()[0]
+                    mes, ano = mes_ano_mais_frequente.split("/")
+                    #& Mapeamento para português
+                    MESES_PT = [
+                        "jan", "fev", "mar", "abr", "mai", "jun",
+                        "jul", "ago", "set", "out", "nov", "dez"
+                    ]
+                    mes_pt = MESES_PT[int(mes) - 1]
+                    return f"{mes_pt}/{ano}"
+        except Exception as e:
+            print(f"Erro ao extrair mês/ano: {e}")
+        #&& Fallback: retorna o nome do arquivo sem extensão
+        return os.path.basename(file_path).replace(".xlsx", "")
 
     def importar_arquivo_excel(self):
         paths, _ = QFileDialog.getOpenFileNames(
@@ -293,7 +341,7 @@ class MainWindow(QMainWindow):
             self.atualizar_listbox_meses()
             self.atualizar_filtros_grafico()
             self.atualizar_kpis()
-            # Atualiza gráfico após importação
+            #& Atualiza gráfico após importação
             if hasattr(self, "backend_qml") and self.backend_qml is not None:
                 self.backend_qml.atualizar_grafico()
         else:

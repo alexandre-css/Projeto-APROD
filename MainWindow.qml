@@ -499,59 +499,245 @@ ApplicationWindow {
                     Layout.leftMargin: 8
                 }
 
+                // Bloco da tabela com cabeçalho
                 Rectangle {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: 340
                     radius: 18
                     border.color: "#3cb3e6"
                     border.width: 2
                     color: "#fff"
-                    height: 420
-                    // Aqui virá a TableView real, conectada ao backend
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 0
+
+                        HorizontalHeaderView {
+                            id: header
+                            syncView: pesosTable
+                            height: 36
+                            model: [
+                                { display: "Usuário" },
+                                { display: "Peso" }
+                            ]
+                            delegate: Rectangle {
+                                color: "#e3f2fd"
+                                border.color: "#3cb3e6"
+                                border.width: 1
+                                width: pesosTable.columnWidthProvider(index)
+                                height: 36
+                                Text {
+                                    text: display
+                                    anchors.centerIn: parent
+                                    font.pixelSize: 18
+                                    font.bold: true
+                                    color: "#3cb3e6"
+                                }
+                            }
+                        }
+
+                        TableView {
+                            id: pesosTable
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            rowSpacing: 6
+                            columnSpacing: 0
+                            model: backend && backend.nomes && backend.valores
+                                ? backend.nomes.length
+                                : 0
+                            columnWidthProvider: function(column) { return column === 0 ? 240 : 120 }
+                            rowHeightProvider: function(row) { return 36 }
+
+                            delegate: Item {
+                                width: pesosTable.width
+                                height: 36
+
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 0
+
+                                    Rectangle {
+                                        width: 240
+                                        height: parent.height
+                                        color: "transparent"
+                                        border.color: "#3cb3e6"
+                                        border.width: 1
+                                        Text {
+                                            text: backend.nomes[index]
+                                            anchors.centerIn: parent
+                                            font.pixelSize: 17
+                                            color: "#232946"
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: 120
+                                        height: parent.height
+                                        color: "transparent"
+                                        border.color: "#3cb3e6"
+                                        border.width: 1
+                                        TextField {
+                                            text: backend.valores[index] !== undefined ? backend.valores[index] : ""
+                                            anchors.fill: parent
+                                            anchors.margins: 6
+                                            font.pixelSize: 17
+                                            color: "#232946"
+                                            inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                            onEditingFinished: backend.atualizarPeso(index, parseFloat(text))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
+                // Bloco dos botões - sempre visível abaixo da tabela
                 RowLayout {
                     Layout.alignment: Qt.AlignLeft
                     spacing: 18
+
+                    // Salvar Pesos
                     Rectangle {
-                        width: 160
-                        height: 44
-                        radius: 12
-                        color: "#43a047"
-                        MouseArea { anchors.fill: parent; onClicked: backend.salvarPesos() }
-                        Text {
-                            text: "Salvar Pesos"
-                            color: "#fff"
-                            font.bold: true
-                            font.pixelSize: 16
+                        id: salvarPesosButton
+                        width: 220
+                        height: 48
+                        radius: 14
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "#3cb3e6" }
+                            GradientStop { position: 1.0; color: "#1976d2" }
+                        }
+                        property bool hovered: false
+                        scale: hovered ? 1.03 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            shadowEnabled: true
+                            shadowColor: "#b8d6f3"
+                            shadowBlur: 1.0
+                            shadowHorizontalOffset: 2
+                            shadowVerticalOffset: 2
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onEntered: salvarPesosButton.hovered = true
+                            onExited: salvarPesosButton.hovered = false
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: backend.salvarPesos()
+                        }
+                        RowLayout {
                             anchors.centerIn: parent
+                            spacing: 8
+                            Image {
+                                source: "assets/icons/peso2.png"
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                                fillMode: Image.PreserveAspectFit
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            Text {
+                                text: "Salvar Pesos"
+                                color: "#fff"
+                                font.bold: true
+                                font.pixelSize: 17
+                            }
                         }
                     }
+
+                    // Carregar Pesos
                     Rectangle {
-                        width: 160
-                        height: 44
-                        radius: 12
-                        color: "#1565c0"
-                        MouseArea { anchors.fill: parent; onClicked: backend.carregarPesos() }
-                        Text {
-                            text: "Carregar Pesos"
-                            color: "#fff"
-                            font.bold: true
-                            font.pixelSize: 16
+                        id: carregarPesosButton
+                        width: 220
+                        height: 48
+                        radius: 14
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "#3cb3e6" }
+                            GradientStop { position: 1.0; color: "#1976d2" }
+                        }
+                        property bool hovered: false
+                        scale: hovered ? 1.03 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            shadowEnabled: true
+                            shadowColor: "#b8d6f3"
+                            shadowBlur: 1.0
+                            shadowHorizontalOffset: 2
+                            shadowVerticalOffset: 2
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onEntered: carregarPesosButton.hovered = true
+                            onExited: carregarPesosButton.hovered = false
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: backend.carregarPesos()
+                        }
+                        RowLayout {
                             anchors.centerIn: parent
+                            spacing: 8
+                            Image {
+                                source: "assets/icons/peso3.png"
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                                fillMode: Image.PreserveAspectFit
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            Text {
+                                text: "Carregar Pesos"
+                                color: "#fff"
+                                font.bold: true
+                                font.pixelSize: 17
+                            }
                         }
                     }
+
+                    // Restaurar Padrão
                     Rectangle {
-                        width: 180
-                        height: 44
-                        radius: 12
-                        color: "#e53935"
-                        MouseArea { anchors.fill: parent; onClicked: backend.restaurarPesosPadrao() }
-                        Text {
-                            text: "Restaurar Padrão"
-                            color: "#fff"
-                            font.bold: true
-                            font.pixelSize: 16
+                        id: restaurarPadraoButton
+                        width: 220
+                        height: 48
+                        radius: 14
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "#3cb3e6" }
+                            GradientStop { position: 1.0; color: "#1976d2" }
+                        }
+                        property bool hovered: false
+                        scale: hovered ? 1.03 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            shadowEnabled: true
+                            shadowColor: "#b8d6f3"
+                            shadowBlur: 1.0
+                            shadowHorizontalOffset: 2
+                            shadowVerticalOffset: 2
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onEntered: restaurarPadraoButton.hovered = true
+                            onExited: restaurarPadraoButton.hovered = false
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: backend.restaurarPesosPadrao()
+                        }
+                        RowLayout {
                             anchors.centerIn: parent
+                            spacing: 8
+                            Image {
+                                source: "assets/icons/peso4.png"
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                                fillMode: Image.PreserveAspectFit
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            Text {
+                                text: "Restaurar Padrão"
+                                color: "#fff"
+                                font.bold: true
+                                font.pixelSize: 17
+                            }
                         }
                     }
                 }
