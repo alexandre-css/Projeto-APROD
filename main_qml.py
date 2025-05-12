@@ -199,16 +199,6 @@ class Backend(QObject):
         self.mainwindow.importar_arquivo_excel()
         self.atualizar_arquivos_carregados()
 
-    def chave_mes_ano(self, mes_ano):
-        try:
-            mes, ano = mes_ano.split("/")
-            meses = [
-                "jan", "fev", "mar", "abr", "mai", "jun",
-                "jul", "ago", "set", "out", "nov", "dez"
-            ]
-            return int(ano), meses.index(mes.lower())
-        except Exception:
-            return (0, 0)
 
     def chave_mes_ano(self, mes_ano):
         try:
