@@ -736,6 +736,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 18
+                    /// BOTÃO SALVAR PESO
                     Rectangle {
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 48
@@ -761,7 +762,14 @@ ApplicationWindow {
                             onEntered: parent.hovered = true
                             onExited: parent.hovered = false
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: backend.salvarPesos()
+                            onClicked: {
+                                let pesos = {};
+                                for (let j = 0; j < pesosModel.count; ++j) {
+                                    let item = pesosModel.get(j);
+                                    pesos[item.tipo] = item.peso;
+                                }
+                                backend.salvarTodosPesos(pesos);
+                            }
                         }
                         RowLayout {
                             anchors.centerIn: parent
@@ -781,6 +789,7 @@ ApplicationWindow {
                             }
                         }
                     }
+                    /// BOTÃO RESTAURAR PESO
                     Rectangle {
                         Layout.preferredWidth: 220
                         Layout.preferredHeight: 48
@@ -806,8 +815,18 @@ ApplicationWindow {
                             onEntered: parent.hovered = true
                             onExited: parent.hovered = false
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: backend.restaurarPesosPadrao()
-                        }
+                            onClicked: {
+                                // Zera todos os pesos no modelo QML
+                                for (let i = 0; i < pesosModel.count; ++i) {
+                                    pesosModel.setProperty(i, "peso", 1)
+                                }
+                                let pesos = {};
+                                for (let i = 0; i < pesosModel.count; ++i) {
+                                    let item = pesosModel.get(i);
+                                    pesos[item.tipo] = item.peso;
+                                }
+                                backend.salvarTodosPesos(pesos);
+                                }
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 8
@@ -830,4 +849,5 @@ ApplicationWindow {
             }
         }
     }
+}
 }

@@ -201,10 +201,7 @@ class Backend(QObject):
 
     @pyqtSlot()
     def atualizar_tabela_pesos(self):
-        """
-        Popula self._nomes com os tipos de agendamento únicos encontrados nos arquivos Excel
-        e self._valores com o peso atribuído a cada tipo (via GerenciadorPesosAgendamento).
-        """
+        import re
         pasta = "dados_mensais"
         arquivos = (
             [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")]
@@ -217,8 +214,9 @@ class Backend(QObject):
             df = self.mainwindow.carregar_planilha(file_path)
             if "Agendamento" in df.columns:
                 tipos = df["Agendamento"].dropna().astype(str).str.strip()
+                # LIMPEZA AQUI: remove " (números)" ao final
+                tipos = tipos.str.replace(r"\s*\(\d+\)$", "", regex=True)
                 tipos_agendamento.update(tipos)
-        # Ordena alfabeticamente para exibir sempre igual
         tipos_agendamento = sorted(tipos_agendamento)
         # Pega os pesos atuais do gerenciador
         pesos = [
@@ -265,19 +263,14 @@ class Backend(QObject):
             self.nomesChanged.emit()
             self.valoresChanged.emit()
             self.atualizar_tabela_pesos()
+    
     @pyqtSlot()
-    def restaurarPesosPadrao(self):
-        """
-        Restaura todos os pesos para 1.0 e salva.
-        """
-        if hasattr(self.mainwindow, "gerenciador_pesos"):
-            self.mainwindow.gerenciador_pesos.pesos = defaultdict(lambda: 1.0)
-            self.mainwindow.gerenciador_pesos.salvar_pesos()
-            self.atualizar_grafico()
-            self.atualizar_kpis()
-            self.nomesChanged.emit()
-            self.valoresChanged.emit()
-            self.atualizar_tabela_pesos()
+    def restaurar_pesos_padrao(self):
+        # Zera todos os pesos no modelo
+        for i in range(self.pesosModel.rowCount()):
+            self.pesosModel.setProperty(i, "peso", 0)
+        # Se você salva em arquivo/config, também atualize lá
+        self.salvar_pesos()
 
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
@@ -508,10 +501,15 @@ class GerenciadorPesosAgendamento:
 
     def salvar_pesos(self):
         """
-        Salva os pesos atuais no arquivo JSON.
+        Salva os pesos atuais no arquivo JSON na pasta institucional.
         """
-        with open(self.arquivo_pesos, "w", encoding="utf-8") as f:
-            json.dump(dict(self.pesos), f, indent=4)
+        pasta_destino = r"C:\Analyzer\Project-Analyzer-Dev\Projeto-APROD\pesos salvos"
+        if not os.path.exists(pasta_destino):
+            os.makedirs(pasta_destino)
+        caminho_arquivo = os.path.join(pasta_destino, "pesos.json")
+        # Se self.pesos for um dict, ótimo. Se for outro tipo, converta.
+        with open(caminho_arquivo, "w", encoding="utf-8") as f:
+            json.dump(dict(self.pesos), f, ensure_ascii=False, indent=4)
 
     def atualizar_peso(self, tipo_agendamento, novo_peso):
         """
