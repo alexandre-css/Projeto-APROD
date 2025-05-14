@@ -86,12 +86,22 @@ class Backend(QObject):
             df_total["Usuário"] = (
                 df_total["Usuário"].astype(str).str.strip().str.upper()
             )
+            # REMOVE nulos, vazios e o texto "NAN"
+            df_total = df_total[
+                (df_total["Usuário"].notna()) &
+                (df_total["Usuário"] != "") &
+                (df_total["Usuário"] != "NAN")
+            ]
+
+        if "peso" in df_total.columns:
+            df_total["peso"] = pd.to_numeric(df_total["peso"], errors="coerce").fillna(1.0)
+
         minutas = len(df_total)
         minutas_qml = str(minutas)
         media_qml = "--"
         top3_qml = "--"
         if "Usuário" in df_total.columns and "peso" in df_total.columns:
-            produtividade = df_total.groupby("Usuário")["peso"].sum()
+            produtividade = df_total.groupby("Usuário")["peso"].sum().fillna(0)
             media = produtividade.mean() if not produtividade.empty else 0
             media_qml = f"{media:.2f}"
             top3 = produtividade.sort_values(ascending=False).head(3)
@@ -117,8 +127,11 @@ class Backend(QObject):
                 dia_qml = f"{dias_semana[dia_mais].capitalize()} ({valor_mais:.2f})"
             else:
                 dia_qml = "--"
+        else:
+            dia_qml = "--"
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.atualizar_kpis(minutas_qml, media_qml, dia_qml, top3_qml)
+
 
     @pyqtSlot()
     def atualizar_arquivos_carregados(self):
@@ -165,6 +178,19 @@ class Backend(QObject):
 
         df_total = pd.concat(dfs, ignore_index=True)
         df_total = df_total.loc[:, ~df_total.columns.duplicated()]
+
+        # >>> LINHA CRUCIAL PARA O GRÁFICO NÃO SUMIR <<<
+        if "Usuário" in df_total.columns:
+            df_total["Usuário"] = df_total["Usuário"].astype(str).str.strip().str.upper()
+            df_total = df_total[
+                (df_total["Usuário"].notna()) &
+                (df_total["Usuário"] != "") &
+                (df_total["Usuário"] != "NAN")
+            ]
+
+        if "peso" in df_total.columns:
+            df_total["peso"] = pd.to_numeric(df_total["peso"], errors="coerce").fillna(1.0)
+
         for col in df_total.columns:
             if (
                 isinstance(col, str)
@@ -194,8 +220,9 @@ class Backend(QObject):
     @pyqtSlot()
     def importar_arquivo_excel(self):
         self.mainwindow.importar_arquivo_excel()
+        self.atualizar_grafico()
+        self.atualizar_kpis()
         self.atualizar_arquivos_carregados()
-
 
     #& Aqui começam os métodos de atribuição de pesos.
 
@@ -266,11 +293,13 @@ class Backend(QObject):
     
     @pyqtSlot()
     def restaurar_pesos_padrao(self):
-        # Zera todos os pesos no modelo
-        for i in range(self.pesosModel.rowCount()):
-            self.pesosModel.setProperty(i, "peso", 0)
-        # Se você salva em arquivo/config, também atualize lá
-        self.salvar_pesos()
+        self.mainwindow.gerenciador_pesos.pesos = defaultdict(lambda: 1.0)
+        self.mainwindow.gerenciador_pesos.salvar_pesos()
+        self.nomesChanged.emit()
+        self.valoresChanged.emit()
+        self.atualizar_grafico()
+        self.atualizar_kpis()
+        self.atualizar_tabela_pesos()
 
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
@@ -344,7 +373,7 @@ class MainWindow(QMainWindow):
             self,
             "Importar arquivos Excel",
             "",
-            "Todos Arquivos (*);;Excel Files (*.xlsx *.xls)",
+            "Planilhas Excel (*.xlsx *.xls)"
         )
         if not paths:
             # Usuário cancelou, não faz nada
@@ -380,15 +409,13 @@ class MainWindow(QMainWindow):
             )
         self.carregar_dados_mensais()
         self.atualizar_listbox_meses()
-        self.atualizar_filtros_grafico()
-        self.atualizar_kpis()
+        
         if hasattr(self, "backend_qml") and self.backend_qml is not None:
             self.backend_qml.atualizar_grafico()
             self.backend_qml.atualizar_tabela_pesos()
             self.backend_qml.atualizar_kpis()
             self.backend_qml.atualizar_arquivos_carregados()
-            self.backend_qml.atualizar_filtros_grafico()
-
+        
         else:
             QMessageBox.warning(
                 self,
@@ -557,4 +584,3 @@ if __name__ == "__main__":
         QMessageBox.critical(None, "Error", "Failed to load QML file.")
         sys.exit(0)
     sys.exit(app.exec())
-
