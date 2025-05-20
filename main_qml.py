@@ -1,9 +1,8 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QVariant
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
 from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QMainWindow, QListWidget
-from PyQt6.QtQml import QQmlApplicationEngine
+from PyQt6.QtQml import QQmlApplicationEngine, QQmlContext
 from xls2xlsx import XLS2XLSX
 from app_v7 import GerenciadorPesosAgendamento, carregar_planilha, MainWindow
-from typing import List
 import sys, os, shutil
 import pandas as pd
 import re
@@ -92,11 +91,11 @@ class Backend(QObject):
     def nomes(self):
         return self._nomes
 
-    @pyqtProperty('QVariantList', notify=valoresChanged)
+    @pyqtProperty(list, notify=valoresChanged)
     def valores(self):
         return self._valores
 
-    @pyqtProperty('QVariantList', notify=tabelaPesosChanged)
+    @pyqtProperty(list, notify=tabelaPesosChanged)
     def tabela_pesos(self):
         return [
             {'tipo': nome, 'peso': valor}
@@ -111,11 +110,11 @@ class Backend(QObject):
     def nomes(self):
         return self._nomes
 
-    @pyqtProperty('QVariantList', notify=valoresChanged)
+    @pyqtProperty(list, notify=valoresChanged)
     def valores(self):
         return self._valores
 
-    @pyqtProperty('QVariantList', notify=tabelaPesosChanged)
+    @pyqtProperty(list, notify=tabelaPesosChanged)
     def tabela_pesos(self):
         return [
             {'tipo': nome, 'peso': valor}

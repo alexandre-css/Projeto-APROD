@@ -440,8 +440,8 @@ ApplicationWindow {
                         // Campo de meses (começa após o botão, preenche o resto do espaço)
                         Rectangle {
                             id: arquivosCarregadosBox
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 85
+                            width: Math.min(mesesFlow.width + 32, 1100) // 32 = margens internas + bordas
+                            height: 85
                             radius: 14
                             color: "#f5faff"
                             border.width: 2
@@ -450,31 +450,29 @@ ApplicationWindow {
                             // Texto de instrução
                             Text {
                                 id: chipLegend
-                                text: "Clique nos meses para ativar/desativar filtros:"
+                                text: "Clique nos meses para ativar/desativar"
                                 font.pixelSize: 12
                                 color: "#3cb3e6"
                                 anchors.top: parent.top
                                 anchors.left: parent.left
                                 anchors.margins: 8
-                                height: 18 // Altura fixa para evitar sobreposições
+                                height: 18
                             }
 
-                            // Container com rolagem horizontal
                             Flickable {
                                 id: mesesFlickable
-                                anchors.fill: parent
-                                anchors.topMargin: 30  // IMPORTANTE: Valor fixo para evitar sobreposições
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                anchors.bottomMargin: 8
+                                width: Math.min(mesesFlow.width + 20, 1060) // 20 = margens internas
+                                height: parent.height - chipLegend.height - 12
+                                anchors.left: parent.left
+                                anchors.top: chipLegend.bottom
+                                anchors.leftMargin: 8
+                                anchors.topMargin: 4
                                 contentWidth: mesesFlow.width
                                 flickableDirection: Flickable.HorizontalFlick
                                 clip: true
 
-                                // Usar Flow em vez de Row para quebrar linhas se necessário
                                 Flow {
                                     id: mesesFlow
-                                    width: parent.width - 20
                                     spacing: 10
 
                                     Repeater {
