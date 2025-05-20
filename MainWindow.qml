@@ -550,7 +550,6 @@ ApplicationWindow {
                 spacing: 24
                 width: 1100
 
-                // TÍTULO CENTRALIZADO
                 Text {
                     text: "Atribuição de Pesos"
                     font.pixelSize: 28
@@ -560,7 +559,6 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignHCenter
                 }
 
-                // CARD DA TABELA
                 Rectangle {
                     width: 1100
                     height: 700
@@ -575,126 +573,68 @@ ApplicationWindow {
                         anchors.fill: parent
                         spacing: 0
 
-                        // Cabeçalho centralizado
                         Item {
                             width: parent.width
                             height: 44
                             RowLayout {
                                 anchors.fill: parent
                                 spacing: 0
+
                                 Item {
                                     width: 800
                                     height: 44
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (sortColumn === 0) {
-                                                sortAscending = !sortAscending
-                                            } else {
-                                                sortColumn = 0
-                                                sortAscending = true
-                                            }
-                                            let arr = []
-                                            for (let i = 0; i < pesosModel.count; ++i) {
-                                                arr.push({
-                                                    tipo: pesosModel.get(i).tipo,
-                                                    peso: pesosModel.get(i).peso
-                                                })
-                                            }
-                                            arr.sort(function(a, b) {
-                                                let cmp = a.tipo.localeCompare(b.tipo, 'pt', { sensitivity: 'base' })
-                                                return sortAscending ? cmp : -cmp
-                                            })
-                                            pesosModel.clear()
-                                            for (let j = 0; j < arr.length; ++j) {
-                                                pesosModel.append(arr[j])
-                                            }
-                                        }
-                                    }
                                     Text {
                                         text: "Tipo de Agendamento"
                                         anchors.centerIn: parent
                                         font.pixelSize: 18
                                         font.bold: true
                                         color: "#3cb3e6"
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
                                     }
                                 }
+
                                 Item {
                                     width: 260
                                     height: 44
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (sortColumn === 1) {
-                                                sortAscending = !sortAscending
-                                            } else {
-                                                sortColumn = 1
-                                                sortAscending = true
-                                            }
-                                            let arr = []
-                                            for (let i = 0; i < pesosModel.count; ++i) {
-                                                arr.push({
-                                                    tipo: pesosModel.get(i).tipo,
-                                                    peso: pesosModel.get(i).peso
-                                                })
-                                            }
-                                            arr.sort(function(a, b) {
-                                                let cmp = Number(a.peso) - Number(b.peso)
-                                                return sortAscending ? cmp : -cmp
-                                            })
-                                            pesosModel.clear()
-                                            for (let j = 0; j < arr.length; ++j) {
-                                                pesosModel.append(arr[j])
-                                            }
-                                        }
-                                    }
                                     Text {
                                         text: "Peso"
                                         anchors.centerIn: parent
                                         font.pixelSize: 18
                                         font.bold: true
                                         color: "#3cb3e6"
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
                                     }
                                 }
                             }
-                            // Linha azul inferior do header
+
                             Rectangle {
-                                anchors.left: parent.left
-                                anchors.right: parent.right
                                 anchors.bottom: parent.bottom
+                                width: parent.width
                                 height: 1
                                 color: "#3cb3e6"
                             }
                         }
 
-                        // Flickable com linhas
                         Flickable {
                             id: flick
-                            anchors.left: parent.left
-                            anchors.right: parent.right
+                            width: parent.width
                             height: parent.height - 44
-                            contentWidth: parent.width
-                            contentHeight: pesosModel.count * 44
+                            contentHeight: column.height
                             clip: true
 
                             Column {
+                                id: column
                                 width: parent.width
+
                                 Repeater {
                                     model: pesosModel
-                                    delegate: Item {
-                                        width: parent.width
+
+                                    Item {
+                                        width: column.width
                                         height: 44
+
                                         RowLayout {
                                             anchors.fill: parent
                                             spacing: 0
 
-                                            // Coluna Tipo de Agendamento centralizada
                                             Item {
                                                 width: 800
                                                 height: 44
@@ -704,41 +644,104 @@ ApplicationWindow {
                                                     font.pixelSize: 17
                                                     color: "#232946"
                                                     elide: Text.ElideRight
-                                                    wrapMode: Text.WordWrap
-                                                    width: parent.width - 16
-                                                    horizontalAlignment: Text.AlignHCenter
-                                                    verticalAlignment: Text.AlignVCenter
                                                 }
                                             }
-                                            // Coluna Peso centralizada
+
                                             Item {
                                                 width: 260
                                                 height: 44
-                                                TextField {
-                                                    text: model.peso !== undefined ? model.peso : ""
+                                                RowLayout {
                                                     anchors.centerIn: parent
-                                                    width: 76
-                                                    height: 32
-                                                    font.pixelSize: 15
-                                                    color: "#232946"
-                                                    inputMethodHints: Qt.ImhFormattedNumbersOnly
-                                                    horizontalAlignment: Text.AlignHCenter
-                                                    verticalAlignment: Text.AlignVCenter
-                                                    onEditingFinished: {
-                                                        let value = parseFloat(text)
-                                                        if (!isNaN(value)) {
+                                                    spacing: 8
+
+                                                    // Botão -
+                                                    Rectangle {
+                                                        width: 32
+                                                        height: 32
+                                                        radius: 8
+                                                        color: "#e3f2fd"
+                                                        border.color: "#3cb3e6"
+                                                        border.width: 1
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: {
+                                                                let value = parseFloat(textField.text)
+                                                                value = isNaN(value) ? 1.0 : Math.max(1.0, value - 1.0)
+                                                                textField.text = value.toFixed(1)
+                                                                pesosModel.setProperty(index, "peso", value)
+                                                                backend.atualizarPeso(index, value)
+                                                            }
+                                                        }
+                                                        Text {
+                                                            text: "-"
+                                                            anchors.centerIn: parent
+                                                            font.pixelSize: 18
+                                                            font.bold: true
+                                                            color: "#3cb3e6"
+                                                        }
+                                                    }
+
+                                                    // CAMPO DE DIGITAÇÃO (largura fixa para "10.0")
+                                                    TextField {
+                                                        id: textField
+                                                        text: model.peso !== undefined ? Number(model.peso).toFixed(1) : ""
+                                                        Layout.preferredWidth: 70
+                                                        height: 32
+                                                        font.pixelSize: 16
+                                                        horizontalAlignment: TextInput.AlignHCenter
+                                                        verticalAlignment: TextInput.AlignVCenter
+                                                        validator: IntValidator { bottom: 1; top: 10 }
+                                                        inputMethodHints: Qt.ImhDigitsOnly
+                                                        background: Rectangle {
+                                                            radius: 6
+                                                            border.color: "#3cb3e6"
+                                                            border.width: 1
+                                                            color: "#fff"
+                                                        }
+                                                        onEditingFinished: {
+                                                            let value = parseInt(text)
+                                                            value = Math.min(10, Math.max(1, isNaN(value) ? 1 : value))
+                                                            text = value.toFixed(1)
                                                             pesosModel.setProperty(index, "peso", value)
                                                             backend.atualizarPeso(index, value)
+                                                        }
+                                                    }
+
+                                                    // Botão +
+                                                    Rectangle {
+                                                        width: 32
+                                                        height: 32
+                                                        radius: 8
+                                                        color: "#e3f2fd"
+                                                        border.color: "#3cb3e6"
+                                                        border.width: 1
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: {
+                                                                let value = parseFloat(textField.text)
+                                                                value = isNaN(value) ? 1.0 : Math.min(10.0, value + 1.0)
+                                                                textField.text = value.toFixed(1)
+                                                                pesosModel.setProperty(index, "peso", value)
+                                                                backend.atualizarPeso(index, value)
+                                                            }
+                                                        }
+                                                        Text {
+                                                            text: "+"
+                                                            anchors.centerIn: parent
+                                                            font.pixelSize: 18
+                                                            font.bold: true
+                                                            color: "#3cb3e6"
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                        // Linha azul inferior da linha
+
                                         Rectangle {
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
                                             anchors.bottom: parent.bottom
+                                            width: parent.width
                                             height: 1
                                             color: "#3cb3e6"
                                             visible: index < pesosModel.count - 1
@@ -748,34 +751,21 @@ ApplicationWindow {
                             }
 
                             ScrollBar.vertical: ScrollBar {
-                                anchors.right: parent.right
-                                anchors.top: parent.top
-                                anchors.bottom: parent.bottom
-                                anchors.rightMargin: 4
-                                anchors.bottomMargin: 8
-                                width: 16
+                                width: 12
                                 policy: ScrollBar.AlwaysOn
-
                                 contentItem: Rectangle {
-                                    implicitWidth: 12
                                     radius: 6
                                     color: "#3cb3e6"
-                                    opacity: 0.9
-                                }
-                                background: Rectangle {
-                                    color: "transparent"
                                 }
                             }
                         }
                     }
                 }
 
-                // BOTÕES CENTRALIZADOS ABAIXO DA TABELA
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 18
 
-                    // Botão Salvar Pesos
                     Rectangle {
                         width: 220
                         height: 48
@@ -784,29 +774,16 @@ ApplicationWindow {
                             GradientStop { position: 0.0; color: "#3cb3e6" }
                             GradientStop { position: 1.0; color: "#1976d2" }
                         }
-                        property bool hovered: false
-                        scale: hovered ? 1.03 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-                        layer.enabled: true
-                        layer.effect: MultiEffect {
-                            shadowEnabled: true
-                            shadowColor: "#b8d6f3"
-                            shadowBlur: 1.0
-                            shadowHorizontalOffset: 2
-                            shadowVerticalOffset: 2
-                        }
+
                         MouseArea {
                             anchors.fill: parent
-                            hoverEnabled: true
-                            onEntered: parent.hovered = true
-                            onExited: parent.hovered = false
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 backend.salvarPesos()
-                                backend.atualizar_tabela_pesos()
-                                saveConfirmation.open() // Abre o popup de confirmação
+                                saveConfirmation.open()
                             }
                         }
+
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 8
