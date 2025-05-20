@@ -179,6 +179,7 @@ ApplicationWindow {
     }
 
 
+////////////////////////////////////// COMEÇO DASHBOARD PAGE
 
     Component {
         id: dashboardPage
@@ -188,18 +189,20 @@ ApplicationWindow {
             color: "transparent"
             Layout.fillWidth: true
             Layout.fillHeight: true
+            // ColumnLayout principal do dashboardPage
             ColumnLayout {
                 anchors.top: parent.top
-                anchors.topMargin: 48
+                anchors.topMargin: 20
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width - 160, 1200)
-                spacing: 24
+                width: Math.min(parent.width - 140, 1200)
+                spacing: 10
 
-                // KPIs centralizados, espaçamento menor, textos protegidos
+                // KPIs
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 18
+                    Layout.bottomMargin: 4
 
                     // KPI 1: Total de Minutas
                     Rectangle {
@@ -358,128 +361,231 @@ ApplicationWindow {
                     }
                 }
                 // Espaço entre KPIs e botões/campo de meses
-                Item { height: 6 }
+                Item { height: 2 }
 
                 // Botões e campo de meses centralizados
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 0 // Margem consistente após os KPIs
+                    Layout.bottomMargin: 4  // Mínimo espaço após controles
                     spacing: 18
 
-                    Rectangle {
-                        id: importButton
-                        width: 220
-                        height: 48
-                        radius: 14
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
-                        }
-                        property bool hovered: false
-                        scale: hovered ? 1.03 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-                        layer.enabled: true
-                        layer.effect: MultiEffect {
-                            shadowEnabled: true
-                            shadowColor: "#b8d6f3"
-                            shadowBlur: 1.0
-                            shadowHorizontalOffset: 2
-                            shadowVerticalOffset: 2
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onEntered: importButton.hovered = true
-                            onExited: importButton.hovered = false
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: backend.importar_arquivo_excel()
-                        }
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: 8
-                            Image {
-                                source: "assets/icons/excel.png"
-                                Layout.preferredWidth: 30
-                                Layout.preferredHeight: 30
-                                Layout.minimumWidth: 30
-                                Layout.minimumHeight: 30
-                                Layout.maximumWidth: 30
-                                Layout.maximumHeight: 30
-                                fillMode: Image.PreserveAspectFit
-                                Layout.alignment: Qt.AlignVCenter
+                    // Campo de meses e botão Importar Excel
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 60
+                        Layout.bottomMargin: 8
+                        Layout.topMargin: 8
+                        spacing: 18
+                        Layout.alignment: Qt.AlignHCenter
+
+                        // Botão Importar Excel (mantém largura fixa)
+                        Rectangle {
+                            id: importButton
+                            Layout.preferredWidth: 220
+                            Layout.preferredHeight: 48
+                            radius: 14
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: "#3cb3e6" }
+                                GradientStop { position: 1.0; color: "#1976d2" }
                             }
+                            property bool hovered: false
+                            scale: hovered ? 1.03 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+
+                            layer.enabled: true
+                            layer.effect: MultiEffect {
+                                shadowEnabled: true
+                                shadowColor: "#b8d6f3"
+                                shadowBlur: 1.0
+                                shadowHorizontalOffset: 2
+                                shadowVerticalOffset: 2
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onEntered: importButton.hovered = true
+                                onExited: importButton.hovered = false
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: backend.importar_arquivo_excel()
+                            }
+
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 8
+
+                                Image {
+                                    source: "assets/icons/excel.png"
+                                    Layout.preferredWidth: 30
+                                    Layout.preferredHeight: 30
+                                    Layout.minimumWidth: 30
+                                    Layout.minimumHeight: 30
+                                    Layout.maximumWidth: 30
+                                    Layout.maximumHeight: 30
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+
+                                Text {
+                                    text: "Importar Excel"
+                                    color: "#fff"
+                                    font.bold: true
+                                    font.pixelSize: 17
+                                }
+                            }
+                        }
+
+                        // Campo de meses (começa após o botão, preenche o resto do espaço)
+                        Rectangle {
+                            id: arquivosCarregadosBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 85
+                            radius: 14
+                            color: "#f5faff"
+                            border.width: 2
+                            border.color: "#3cb3e6"
+
+                            // Texto de instrução
                             Text {
-                                text: "Importar Excel"
-                                color: "#fff"
+                                id: chipLegend
+                                text: "Clique nos meses para ativar/desativar filtros:"
+                                font.pixelSize: 12
+                                color: "#3cb3e6"
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.margins: 8
+                                height: 18 // Altura fixa para evitar sobreposições
+                            }
+
+                            // Container com rolagem horizontal
+                            Flickable {
+                                id: mesesFlickable
+                                anchors.fill: parent
+                                anchors.topMargin: 30  // IMPORTANTE: Valor fixo para evitar sobreposições
+                                anchors.leftMargin: 10
+                                anchors.rightMargin: 10
+                                anchors.bottomMargin: 8
+                                contentWidth: mesesFlow.width
+                                flickableDirection: Flickable.HorizontalFlick
+                                clip: true
+
+                                // Usar Flow em vez de Row para quebrar linhas se necessário
+                                Flow {
+                                    id: mesesFlow
+                                    width: parent.width - 20
+                                    spacing: 10
+
+                                    Repeater {
+                                        id: mesesRepeater
+                                        model: backend && backend.mesesDisponiveis ? backend.mesesDisponiveis : []
+
+                                        Rectangle {
+                                            width: monthText.width + 36
+                                            height: 36
+                                            radius: 10
+                                            property bool forceUpdate: false
+
+                                            // Timer para forçar atualização mais frequente
+                                            Timer {
+                                                interval: 20
+                                                running: true
+                                                repeat: true
+                                                onTriggered: {
+                                                    parent.forceUpdate = !parent.forceUpdate
+                                                    parent.isActive = backend && backend.mesesAtivos &&
+                                                                     backend.mesesAtivos.indexOf(modelData) >= 0
+                                                }
+                                            }
+
+                                            property bool isActive: backend && backend.mesesAtivos &&
+                                                                   backend.mesesAtivos.indexOf(modelData) >= 0
+
+                                            // Cores com MAIOR contraste
+                                            color: isActive ? "#3cb3e6" : "#f7f7f7"  // Azul forte vs quase branco
+                                            border.color: isActive ? "#1976d2" : "#dddddd"
+                                            border.width: isActive ? 3 : 1
+                                            opacity: isActive ? 1.0 : 0.6  // Diferença maior de opacidade
+
+                                            // Efeitos visuais APENAS para itens ativos
+                                            layer.enabled: isActive
+                                            layer.effect: MultiEffect {
+                                                shadowEnabled: isActive
+                                                shadowColor: "#1976d2"
+                                                shadowBlur: 1.0
+                                                shadowVerticalOffset: 2
+                                            }
+
+                                            // Marcador visual claro para itens ativos
+                                            Rectangle {
+                                                width: 8
+                                                height: 8
+                                                radius: 4
+                                                color: "#ffffff"
+                                                visible: parent.isActive
+                                                anchors {
+                                                    right: parent.right
+                                                    top: parent.top
+                                                    margins: 6
+                                                }
+                                            }
+
+                                            Text {
+                                                id: monthText
+                                                text: modelData
+                                                anchors.centerIn: parent
+                                                font.pixelSize: 15
+                                                font.bold: parent.isActive
+                                                color: parent.isActive ? "#ffffff" : "#232946"
+                                            }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    console.log("Clicado: " + modelData)
+                                                    backend.toggleMesAtivo(modelData)
+                                                }
+                                                hoverEnabled: true
+                                                onEntered: parent.opacity = parent.isActive ? 1.0 : 0.85
+                                                onExited: parent.opacity = parent.isActive ? 1.0 : 0.7
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Indicador de mais conteúdo
+                        Rectangle {
+                            visible: mesesFlickable.contentWidth > mesesFlickable.width
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 20
+                            height: 20
+                            radius: 10
+                            color: "#3cb3e6"
+                            opacity: 0.7
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "›"
+                                color: "white"
                                 font.bold: true
-                                font.pixelSize: 17
+                                font.pixelSize: 16
                             }
                         }
                     }
-
-                    Rectangle {
-                        id: arquivosCarregadosBox
-                        width: 440
-                        height: 48
-                        radius: 14
-                        border.color: "#3cb3e6"
-                        border.width: 2
-                        color: hovered ? "#e1f5fe" : "#f5faff"
-                        property bool hovered: false
-                        scale: hovered ? 1.03 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-                        layer.enabled: true
-                        layer.effect: MultiEffect {
-                            shadowEnabled: true
-                            shadowColor: "#b8d6f3"
-                            shadowBlur: 1.0
-                            shadowHorizontalOffset: 2
-                            shadowVerticalOffset: 2
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onEntered: arquivosCarregadosBox.hovered = true
-                            onExited: arquivosCarregadosBox.hovered = false
-                            cursorShape: Qt.PointingHandCursor
-                        }
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 14
-
-                            Image {
-                                source: "assets/icons/xls.png"
-                                Layout.preferredWidth: 30
-                                Layout.preferredHeight: 30
-                                Layout.minimumWidth: 30
-                                Layout.minimumHeight: 30
-                                Layout.maximumWidth: 30
-                                Layout.maximumHeight: 30
-                                fillMode: Image.PreserveAspectFit
-                            }
-
-                            Text {
-                                text: backend && backend.arquivosCarregados ? backend.arquivosCarregados : ""
-                                font.pixelSize: 17
-                                font.bold: true
-                                color: "#232946"
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                                wrapMode: Text.NoWrap
-                                Layout.fillWidth: true
-                            }
-                        }
-                    }
-                } // Correção: Adicionado o fechamento do RowLayout que estava faltando
+                }
 
                 // Espaço entre botões/campo de meses e gráfico
-                Item { height: 6 }
+                Item { height: 2 }
 
                 // Gráfico centralizado (altura garantida)
                 Rectangle {
                     width: Math.min(parent.width - 160, 1000)
-                    height: 650
+                    height: 620
                     radius: 22
                     border.color: "#3cb3e6"
                     border.width: 2
