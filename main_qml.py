@@ -8,6 +8,7 @@ import sys, os, shutil
 import pandas as pd
 import re
 import json
+import datetime
 from collections import defaultdict
 
 os.environ["QT_QUICK_CONTROLS_STYLE"] = "Material"
@@ -23,15 +24,11 @@ class Backend(QObject):
     arquivosCarregadosChanged = pyqtSignal()
     tabelaPesosChanged = pyqtSignal()
 
-    def __init__(self, mainwindow: QMainWindow = None):
+    def __init__(self, mainwindow):
         super().__init__()
-        self._nomes: List[str] = []
-        self._valores: List[QVariant] = []
-        self._arquivosCarregados = ""
-        if mainwindow is not None and isinstance(mainwindow, QMainWindow):
-            self.mainwindow: QMainWindow = mainwindow
-        else:
-            self.mainwindow: QMainWindow = QMainWindow()
+        self.mainwindow = mainwindow
+        self._nomes = []
+        self._valores = []
 
     @pyqtProperty('QStringList', notify=nomesChanged)
     def nomes(self):
@@ -86,22 +83,12 @@ class Backend(QObject):
             df_total["Usuário"] = (
                 df_total["Usuário"].astype(str).str.strip().str.upper()
             )
-            # REMOVE nulos, vazios e o texto "NAN"
-            df_total = df_total[
-                (df_total["Usuário"].notna()) &
-                (df_total["Usuário"] != "") &
-                (df_total["Usuário"] != "NAN")
-            ]
-
-        if "peso" in df_total.columns:
-            df_total["peso"] = pd.to_numeric(df_total["peso"], errors="coerce").fillna(1.0)
-
         minutas = len(df_total)
         minutas_qml = str(minutas)
         media_qml = "--"
         top3_qml = "--"
         if "Usuário" in df_total.columns and "peso" in df_total.columns:
-            produtividade = df_total.groupby("Usuário")["peso"].sum().fillna(0)
+            produtividade = df_total.groupby("Usuário")["peso"].sum()
             media = produtividade.mean() if not produtividade.empty else 0
             media_qml = f"{media:.2f}"
             top3 = produtividade.sort_values(ascending=False).head(3)
@@ -127,11 +114,8 @@ class Backend(QObject):
                 dia_qml = f"{dias_semana[dia_mais].capitalize()} ({valor_mais:.2f})"
             else:
                 dia_qml = "--"
-        else:
-            dia_qml = "--"
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.atualizar_kpis(minutas_qml, media_qml, dia_qml, top3_qml)
-
 
     @pyqtSlot()
     def atualizar_arquivos_carregados(self):
@@ -178,19 +162,6 @@ class Backend(QObject):
 
         df_total = pd.concat(dfs, ignore_index=True)
         df_total = df_total.loc[:, ~df_total.columns.duplicated()]
-
-        # >>> LINHA CRUCIAL PARA O GRÁFICO NÃO SUMIR <<<
-        if "Usuário" in df_total.columns:
-            df_total["Usuário"] = df_total["Usuário"].astype(str).str.strip().str.upper()
-            df_total = df_total[
-                (df_total["Usuário"].notna()) &
-                (df_total["Usuário"] != "") &
-                (df_total["Usuário"] != "NAN")
-            ]
-
-        if "peso" in df_total.columns:
-            df_total["peso"] = pd.to_numeric(df_total["peso"], errors="coerce").fillna(1.0)
-
         for col in df_total.columns:
             if (
                 isinstance(col, str)
@@ -220,64 +191,104 @@ class Backend(QObject):
     @pyqtSlot()
     def importar_arquivo_excel(self):
         self.mainwindow.importar_arquivo_excel()
-        self.atualizar_grafico()
-        self.atualizar_kpis()
         self.atualizar_arquivos_carregados()
+
+    def _coletar_tipos_brutos(self):
+        pasta = "dados_mensais"
+        arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
+        
+        tipos = set()
+        for arq in arquivos:
+            file_path = os.path.join(pasta, arq)
+            try:
+                df = pd.read_excel(file_path, skiprows=1, usecols="G")
+                if "Agendamento" in df.columns:
+                    # Coleta sem processamento
+                    tipos.update(df["Agendamento"].dropna().astype(str).str.strip().tolist())
+            except Exception as e:
+                print(f"Erro coletando tipos brutos: {str(e)}")
+        return sorted(tipos)
+
 
     #& Aqui começam os métodos de atribuição de pesos.
 
     @pyqtSlot()
     def atualizar_tabela_pesos(self):
-        import re
+        tipos_agendamento = []  # Lista ordenada para manter consistência
+        
+        # Primeiro passo: coletar todos os tipos de agendamento
         pasta = "dados_mensais"
-        arquivos = (
-            [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")]
-            if os.path.exists(pasta)
-            else []
-        )
-        tipos_agendamento = set()
+        arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
+        
         for arq in arquivos:
             file_path = os.path.join(pasta, arq)
-            df = self.mainwindow.carregar_planilha(file_path)
-            if "Agendamento" in df.columns:
-                tipos = df["Agendamento"].dropna().astype(str).str.strip()
-                # LIMPEZA AQUI: remove " (números)" ao final
-                tipos = tipos.str.replace(r"\s*\(\d+\)$", "", regex=True)
-                tipos_agendamento.update(tipos)
-        tipos_agendamento = sorted(tipos_agendamento)
-        # Pega os pesos atuais do gerenciador
-        pesos = [
-            self.mainwindow.gerenciador_pesos.obter_peso(tipo)
-            for tipo in tipos_agendamento
-        ]
-        self._nomes = list(tipos_agendamento)
+            try:
+                # Lê o arquivo Excel, pegando só a coluna G (Agendamento)
+                df_raw = pd.read_excel(file_path, skiprows=1, usecols="G")
+                
+                # Certifica que tem coluna Agendamento
+                if len(df_raw.columns) > 0:
+                    # Força o nome "Agendamento" na primeira coluna
+                    df_raw.columns = ["Agendamento"]
+                    
+                    # Processa os tipos, removendo espaços e parênteses com números
+                    tipos = df_raw["Agendamento"].dropna().astype(str)
+                    tipos = tipos[tipos.str.strip() != ""]
+                    tipos = tipos.apply(lambda x: re.sub(r'\s*(\(\d+\)|\d+)$', '', x).strip())
+                    
+                    # Usa set para evitar duplicatas
+                    tipos_agendamento.extend(tipos.unique())
+            except Exception as e:
+                print(f"Erro processando {file_path}: {str(e)}")
+        
+        # Deixa única e ordenada a lista de tipos
+        tipos_agendamento = sorted(list(set(tipos_agendamento)))
+        
+        # Obter peso para cada tipo
+        pesos = [self.mainwindow.gerenciador_pesos.obter_peso(tipo) for tipo in tipos_agendamento]
+        
+        # Atualiza propriedades e notifica a interface
+        self._nomes = tipos_agendamento
         self._valores = pesos
+        self.tabelaPesosChanged.emit()
         self.nomesChanged.emit()
         self.valoresChanged.emit()
 
     @pyqtSlot(int, float)
     def atualizarPeso(self, index, novo_peso):
-        """
-        Atualiza o peso de um tipo de agendamento, dado o índice na lista de nomes.
-        """
         if hasattr(self.mainwindow, "gerenciador_pesos"):
             nome = self.nomes[index] if 0 <= index < len(self.nomes) else None
             if nome:
-                self.mainwindow.gerenciador_pesos.atualizar_peso(nome, novo_peso)
-                self.mainwindow.gerenciador_pesos.salvar_pesos()
-                self.atualizar_grafico()
-                self.atualizar_kpis()
-                self.nomesChanged.emit()
+                # Atualiza e força salvamento imediato
+                self.mainwindow.gerenciador_pesos.pesos[nome] = float(novo_peso)
+                self.mainwindow.gerenciador_pesos.salvar_pesos()  # Novo
+                self._valores[index] = float(novo_peso)
                 self.valoresChanged.emit()
     
     @pyqtSlot()
     def salvarPesos(self):
-        """
-        Salva os pesos atuais no arquivo JSON.
-        """
-        if hasattr(self.mainwindow, "gerenciador_pesos"):
-            self.mainwindow.gerenciador_pesos.salvar_pesos()
-            self.atualizar_tabela_pesos()
+        """Salva os pesos atuais em novo arquivo com timestamp na pasta 'pesos salvos' do projeto"""
+        try:
+            # Caminho absoluto da pasta do script principal
+            pasta_base = os.path.dirname(os.path.abspath(__file__))
+            pasta_pesos = os.path.join(pasta_base, "pesos salvos")
+            os.makedirs(pasta_pesos, exist_ok=True)
+
+            # Gerar nome do arquivo com timestamp
+            timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            arquivo = os.path.join(pasta_pesos, f"pesos_{timestamp}.json")
+
+            # Salvar cópia dos pesos atuais
+            with open(arquivo, 'w', encoding='utf-8') as f:
+                json.dump(dict(self.mainwindow.gerenciador_pesos.pesos), f, ensure_ascii=False, indent=4)
+
+            # Feedback para o usuário
+            QMessageBox.information(self.mainwindow, "Pesos Salvos", f"Arquivo salvo em:\n{arquivo}")
+
+        except Exception as e:
+            print(f"ERRO AO SALVAR PESOS: {str(e)}")
+            QMessageBox.critical(self.mainwindow, "Erro", f"Falha ao salvar pesos:\n{str(e)}")
+
     @pyqtSlot()
     def carregarPesos(self):
         """
@@ -290,16 +301,35 @@ class Backend(QObject):
             self.nomesChanged.emit()
             self.valoresChanged.emit()
             self.atualizar_tabela_pesos()
-    
+
     @pyqtSlot()
-    def restaurar_pesos_padrao(self):
-        self.mainwindow.gerenciador_pesos.pesos = defaultdict(lambda: 1.0)
-        self.mainwindow.gerenciador_pesos.salvar_pesos()
-        self.nomesChanged.emit()
-        self.valoresChanged.emit()
-        self.atualizar_grafico()
-        self.atualizar_kpis()
-        self.atualizar_tabela_pesos()
+    def restaurarPesosPadrao(self):
+        if hasattr(self.mainwindow, 'gerenciador_pesos'):
+            # 1. Usar os tipos de agendamento atuais (não buscar tipos novos)
+            tipos_atuais = self._nomes  # Mantem os nomes atuais na tabela
+            
+            # 2. Reset no gerenciador de pesos
+            self.mainwindow.gerenciador_pesos.pesos = {
+                tipo: 1.0 for tipo in tipos_atuais
+            }
+            self.mainwindow.gerenciador_pesos.salvar_pesos()
+            
+            # 3. Atualizar apenas os valores sem mexer nos nomes
+            self._valores = [1.0] * len(tipos_atuais)
+            
+            # 4. Forçar sincronização na interface
+            self.tabelaPesosChanged.emit()
+            self.valoresChanged.emit()
+
+    @pyqtSlot(int, float)
+    def atualizarPeso(self, index, novo_peso):
+        if hasattr(self.mainwindow, "gerenciador_pesos"):
+            nome = self._nomes[index] if 0 <= index < len(self._nomes) else None
+            if nome:
+                self.mainwindow.gerenciador_pesos.pesos[nome] = float(novo_peso)
+                self.mainwindow.gerenciador_pesos.salvar_pesos()
+                self._valores[index] = float(novo_peso)
+                self.valoresChanged.emit()
 
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
@@ -332,6 +362,16 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Main Window")
         self.gerenciador_pesos = GerenciadorPesosAgendamento()
+
+    def closeEvent(self, event):
+        try:
+            if hasattr(self, 'gerenciador_pesos'):
+                self.gerenciador_pesos.salvar_pesos()
+        except Exception as e:
+            print(f"Erro ao salvar pesos ao fechar: {str(e)}")
+        finally:
+            super().closeEvent(event)
+
 
     def chave_mes_ano(self, mes_ano):
         try:
@@ -373,7 +413,7 @@ class MainWindow(QMainWindow):
             self,
             "Importar arquivos Excel",
             "",
-            "Planilhas Excel (*.xlsx *.xls)"
+            "Todos Arquivos (*);;Excel Files (*.xlsx *.xls)",
         )
         if not paths:
             # Usuário cancelou, não faz nada
@@ -409,13 +449,14 @@ class MainWindow(QMainWindow):
             )
         self.carregar_dados_mensais()
         self.atualizar_listbox_meses()
-        
+        self.atualizar_filtros_grafico()
+
         if hasattr(self, "backend_qml") and self.backend_qml is not None:
             self.backend_qml.atualizar_grafico()
             self.backend_qml.atualizar_tabela_pesos()
             self.backend_qml.atualizar_kpis()
             self.backend_qml.atualizar_arquivos_carregados()
-        
+
         else:
             QMessageBox.warning(
                 self,
@@ -442,28 +483,34 @@ class MainWindow(QMainWindow):
         self.df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
     def carregar_planilha(self, file_path):
-        if file_path.lower().endswith(".xls"):
-            x2x = XLS2XLSX(file_path)
-            file_path = x2x.to_xlsx()
-        header = pd.read_excel(file_path, nrows=0)
-        if "peso" in header.columns:
-            df = pd.read_excel(file_path, usecols="A:H")
-        else:
-            df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
-            if "Agendamento" in df.columns:
-                tipo_limpo = df["Agendamento"].apply(
-                    lambda x: re.sub(r"\s*\(.*?\)", "", str(x)).strip()
-                )
-                df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+        try:  # ✅ Adicione esta linha
+            if file_path.lower().endswith(".xls"):
+                x2x = XLS2XLSX(file_path)
+                file_path = x2x.to_xlsx()
+            header = pd.read_excel(file_path, nrows=0)
+            if "peso" in header.columns:
+                df = pd.read_excel(file_path, usecols="A:H")
             else:
-                df["peso"] = 1.0
-        if "Usuário" in df.columns:
-            df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
-        df = df.loc[:, ~df.columns.duplicated()]
-        for col in df.columns:
-            if isinstance(col, str) and col.lower().startswith("usu") and col != "Usuário":
-                df.rename(columns={col: "Usuário"}, inplace=True)
-        return df
+                df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
+                if "Agendamento" in df.columns:
+                    tipo_limpo = df["Agendamento"].apply(
+                        lambda x: re.sub(r"\s*\(.*?\)", "", str(x)).strip()
+                    )
+                    df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+                else:
+                    df["peso"] = 1.0
+            if "Usuário" in df.columns:
+                df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+            df = df.loc[:, ~df.columns.duplicated()]
+            for col in df.columns:
+                if isinstance(col, str) and col.lower().startswith("usu") and col != "Usuário":
+                    df.rename(columns={col: "Usuário"}, inplace=True)
+            return df
+        except Exception as e:  # ✅ Agora o except está com o try correspondente
+            print(f"Erro ao carregar planilha {file_path}: {str(e)}")
+            return pd.DataFrame()
+
+                
 
     def atualizar_listbox_meses(self):
         pasta = "dados_mensais"
@@ -504,56 +551,43 @@ class MainWindow(QMainWindow):
             return
 
 class GerenciadorPesosAgendamento:
-    """
-    Gerencia os pesos atribuídos a cada tipo de agendamento.
-    Os pesos são persistidos em um arquivo JSON.
-    """
-    def __init__(self, arquivo_pesos="pesos.json"):
+    def __init__(self, arquivo_pesos=None):
+        if arquivo_pesos is None:
+            pasta_destino = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "salvos")
+            os.makedirs(pasta_destino, exist_ok=True)
+            arquivo_pesos = os.path.join(pasta_destino, "pesos.json")
+        
         self.arquivo_pesos = arquivo_pesos
-        self.pesos = defaultdict(lambda: 1.0)
+        self.pesos = {}
         self.carregar_pesos()
 
+    def restaurar_pesos_padrao(self, tipos_atuais: list):
+        self.pesos = {tipo: 1.0 for tipo in tipos_atuais}  # Sobrescreve completamente
+        self.salvar_pesos()  # Persistência imediata
+
+
     def carregar_pesos(self):
-        """
-        Carrega os pesos do arquivo JSON. Se não existir, inicializa tudo com 1.0.
-        """
         try:
-            with open(self.arquivo_pesos, "r", encoding="utf-8") as f:
+            with open(self.arquivo_pesos, 'r', encoding='utf-8') as f:
                 dados = json.load(f)
-                self.pesos.clear()
-                self.pesos.update(dados)
-        except Exception:
-            self.pesos = defaultdict(lambda: 1.0)
-            self.salvar_pesos()
+                self.pesos = dict(dados)  # ✅ Converte para dict normal
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.pesos = {}
 
     def salvar_pesos(self):
-        """
-        Salva os pesos atuais no arquivo JSON na pasta institucional.
-        """
-        pasta_destino = r"C:\Analyzer\Project-Analyzer-Dev\Projeto-APROD\pesos salvos"
-        if not os.path.exists(pasta_destino):
-            os.makedirs(pasta_destino)
-        caminho_arquivo = os.path.join(pasta_destino, "pesos.json")
-        # Se self.pesos for um dict, ótimo. Se for outro tipo, converta.
-        with open(caminho_arquivo, "w", encoding="utf-8") as f:
-            json.dump(dict(self.pesos), f, ensure_ascii=False, indent=4)
-
-    def atualizar_peso(self, tipo_agendamento, novo_peso):
-        """
-        Atualiza o peso de um tipo de agendamento e salva imediatamente.
-        """
         try:
-            self.pesos[tipo_agendamento] = float(novo_peso)
-            self.salvar_pesos()
-            return True
-        except ValueError:
-            return False
+            with open(self.arquivo_pesos, 'w', encoding='utf-8') as f:
+                json.dump(dict(self.pesos), f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"ERRO CRÍTICO AO SALVAR PESOS: {str(e)}")
+            raise
+
+    def _valor_padrao(self):
+        return 1.0
 
     def obter_peso(self, tipo_agendamento):
-        """
-        Retorna o peso do tipo de agendamento informado (padrão: 1.0).
-        """
         return self.pesos.get(tipo_agendamento, 1.0)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

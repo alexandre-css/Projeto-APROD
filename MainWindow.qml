@@ -142,6 +142,44 @@ ApplicationWindow {
         }
     }
 
+    Popup {
+        id: saveConfirmation
+        width: 400
+        height: 140
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        anchors.centerIn: parent
+
+        Rectangle {
+            anchors.fill: parent
+            color: "#ffffff"
+            radius: 8
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+
+                Text {
+                    text: "Pesos salvos com sucesso!"
+                    font.pixelSize: 18
+                    color: "#3cb3e6"
+                    Layout.alignment: Qt.AlignHCenter
+                }
+
+                Text {
+                    text: "Arquivo disponível na pasta:\n'Documentos/Analyzer-Dev-APROD/pesos salvos'"
+                    font.pixelSize: 14
+                    color: "#232946"
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+        }
+    }
+
+
+
     Component {
         id: dashboardPage
 
@@ -736,54 +774,11 @@ ApplicationWindow {
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 18
+
+                    // Botão Salvar Pesos
                     Rectangle {
-                        Layout.preferredWidth: 220
-                        Layout.preferredHeight: 48
-                        radius: 14
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
-                        }
-                        property bool hovered: false
-                        scale: hovered ? 1.03 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
-                        layer.enabled: true
-                        layer.effect: MultiEffect {
-                            shadowEnabled: true
-                            shadowColor: "#b8d6f3"
-                            shadowBlur: 1.0
-                            shadowHorizontalOffset: 2
-                            shadowVerticalOffset: 2
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onEntered: parent.hovered = true
-                            onExited: parent.hovered = false
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: backend.salvarPesos()
-                        }
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: 8
-                            Image {
-                                source: "assets/icons/peso2.png"
-                                Layout.preferredWidth: 30
-                                Layout.preferredHeight: 30
-                                fillMode: Image.PreserveAspectFit
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-                            Text {
-                                text: "Salvar Pesos"
-                                color: "#fff"
-                                font.bold: true
-                                font.pixelSize: 17
-                            }
-                        }
-                    }
-                    Rectangle {
-                        Layout.preferredWidth: 220
-                        Layout.preferredHeight: 48
+                        width: 220
+                        height: 48
                         radius: 14
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: "#3cb3e6" }
@@ -807,12 +802,70 @@ ApplicationWindow {
                             onExited: parent.hovered = false
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                backend.restaurar_pesos_padrao()
+                                backend.salvarPesos()
+                                backend.atualizar_tabela_pesos()
+                                saveConfirmation.open() // Abre o popup de confirmação
+                            }
+                        }
+                        RowLayout {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Image {
+                                source: "assets/icons/peso2.png"
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                                Layout.minimumWidth: 30
+                                Layout.minimumHeight: 30
+                                Layout.maximumWidth: 30
+                                Layout.maximumHeight: 30
+                                fillMode: Image.PreserveAspectFit
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            Text {
+                                text: "Salvar Pesos"
+                                color: "#fff"
+                                font.bold: true
+                                font.pixelSize: 17
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+
+                    // Botão Restaurar Padrão
+                    Rectangle {
+                        width: 220
+                        height: 48
+                        radius: 14
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "#3cb3e6" }
+                            GradientStop { position: 1.0; color: "#1976d2" }
+                        }
+                        property bool hovered: false
+                        scale: hovered ? 1.03 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutQuad } }
+                        layer.enabled: true
+                        layer.effect: MultiEffect {
+                            shadowEnabled: true
+                            shadowColor: "#b8d6f3"
+                            shadowBlur: 1.0
+                            shadowHorizontalOffset: 2
+                            shadowVerticalOffset: 2
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onEntered: parent.hovered = true
+                            onExited: parent.hovered = false
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                backend.restaurarPesosPadrao()
+                                // Forçar reload completo do modelo da tabela
                                 pesosModel.clear()
                                 for (var i = 0; i < backend.tabela_pesos.length; ++i) {
                                     pesosModel.append(backend.tabela_pesos[i])
                                 }
                             }
+                        }
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 8
@@ -820,6 +873,10 @@ ApplicationWindow {
                                 source: "assets/icons/peso4.png"
                                 Layout.preferredWidth: 30
                                 Layout.preferredHeight: 30
+                                Layout.minimumWidth: 30
+                                Layout.minimumHeight: 30
+                                Layout.maximumWidth: 30
+                                Layout.maximumHeight: 30
                                 fillMode: Image.PreserveAspectFit
                                 Layout.alignment: Qt.AlignVCenter
                             }
@@ -828,6 +885,7 @@ ApplicationWindow {
                                 color: "#fff"
                                 font.bold: true
                                 font.pixelSize: 17
+                                verticalAlignment: Text.AlignVCenter
                             }
                         }
                     }
@@ -835,5 +893,4 @@ ApplicationWindow {
             }
         }
     }
-}
 }
