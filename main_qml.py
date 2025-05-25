@@ -1,6 +1,6 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QMainWindow, QListWidget
-from PyQt6.QtQml import QQmlApplicationEngine, QQmlContext
+from PySide6.QtCore import QObject, Signal as pyqtSignal, Property as pyqtProperty, Slot as pyqtSlot
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QMainWindow, QListWidget
+from PySide6.QtQml import QQmlApplicationEngine, QQmlContext
 from xls2xlsx import XLS2XLSX
 import sys, os, shutil
 import pandas as pd
@@ -35,48 +35,145 @@ class Backend(QObject):
         self._tabelaSemana = []
         self._rankingSemana = ""
 
-    def normalizar_chave(self, dia):
-        return unicodedata.normalize('NFKD', dia).encode('ASCII', 'ignore').decode('ASCII').lower()
+    @pyqtSlot(str)
+    def filtrarTabelaSemana(self, filtro):
+        try:
+            if not self._tabelaSemana or len(self._tabelaSemana) == 0:
+                return
+    
+            if not filtro or filtro.strip() == "":
+                self.gerarTabelaSemana()
+                return
+    
+            filtro = filtro.upper().strip()
+            tabela_filtrada = []
+            
+            for item in self._tabelaSemana:
+                usuario = item.get("usuario", "").upper()
+                if filtro in usuario:
+                    tabela_filtrada.append(item)
+            
+            self._tabelaSemana = tabela_filtrada
+            self.tabelaSemanaChanged.emit()
+        except Exception as e:
+            print(f"Erro ao filtrar tabela: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    @pyqtSlot()
+    def exportarTabelaSemanaCSV(self):
+        try:
+            if not self._tabelaSemana or len(self._tabelaSemana) == 0:
+                print("Não há dados para exportar")
+                return
+                
+            import csv
+            from datetime import datetime
+            
+            pasta_destino = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "exportacoes")
+            os.makedirs(pasta_destino, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            arquivo = os.path.join(pasta_destino, f"produtividade_semana_{timestamp}.csv")
+            
+            with open(arquivo, 'w', newline='', encoding='utf-8-sig') as csvfile:
+                colunas = ['Usuario', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo', 'Total']
+                writer = csv.DictWriter(csvfile, fieldnames=colunas)
+                
+                writer.writeheader()
+                for item in self._tabelaSemana:
+                    total = (float(item.get('segunda', 0)) + 
+                             float(item.get('terca', 0)) + 
+                             float(item.get('quarta', 0)) + 
+                             float(item.get('quinta', 0)) + 
+                             float(item.get('sexta', 0)) + 
+                             float(item.get('sabado', 0)) + 
+                             float(item.get('domingo', 0)))
+                    
+                    writer.writerow({
+                        'Usuario': item.get('usuario', ''),
+                        'Segunda': item.get('segunda', 0),
+                        'Terça': item.get('terca', 0),
+                        'Quarta': item.get('quarta', 0),
+                        'Quinta': item.get('quinta', 0),
+                        'Sexta': item.get('sexta', 0),
+                        'Sábado': item.get('sabado', 0),
+                        'Domingo': item.get('domingo', 0),
+                        'Total': f"{total:.1f}"
+                    })
+                    
+            QMessageBox.information(self.mainwindow, "Exportação Concluída", f"Arquivo salvo em:\n{arquivo}")
+        except Exception as e:
+            print(f"Erro ao exportar CSV: {str(e)}")
+            QMessageBox.critical(self.mainwindow, "Erro", f"Falha ao exportar dados:\n{str(e)}")
+            import traceback
+            traceback.print_exc()
 
+    def normalizar_chave(self, dia):
+
+        mapa_dias = {
+            "Segunda": "segunda",
+            "Terça": "terca",
+            "Quarta": "quarta",
+            "Quinta": "quinta",
+            "Sexta": "sexta",
+            "Sábado": "sabado",
+            "Domingo": "domingo",
+        }
+        
+
+        if dia in mapa_dias:
+            return mapa_dias[dia]
+        
+
+        result = unicodedata.normalize('NFKD', dia).encode('ASCII', 'ignore').decode('ASCII').lower()
+        print(f"Normalizando dia da semana: '{dia}' -> '{result}'")
+        return result
+
+    @pyqtSlot(str, bool)
     def ordenarTabelaSemana(self, coluna, ascendente):
-        """
-        Ordena a tabela de dias da semana por uma coluna específica
-        """
         try:
             if not self._tabelaSemana:
                 return
             
-            # Converte coluna para chave Python
+
             map_colunas = {
                 "usuario": "usuario",
-                "Segunda": "Segunda",
-                "Terça": "Terça", 
-                "Quarta": "Quarta",
-                "Quinta": "Quinta", 
-                "Sexta": "Sexta", 
-                "Sábado": "Sábado", 
-                "Domingo": "Domingo"
+                "Segunda": "segunda",
+                "Terça": "terca", 
+                "Quarta": "quarta",
+                "Quinta": "quinta", 
+                "Sexta": "sexta", 
+                "Sábado": "sabado", 
+                "Domingo": "domingo",
+                "Total": "Total"
             }
             
             coluna_python = map_colunas.get(coluna, coluna)
 
-            # Define a chave de ordenação
+
             def chave_ordem(item):
                 if coluna_python == "usuario":
-                    # Ordenação alfabética para usuários
+
                     return str(item.get(coluna_python, "")).upper()
+                elif coluna_python == "Total":
+
+                    return float(item.get('segunda', 0)) + float(item.get('terca', 0)) + \
+                        float(item.get('quarta', 0)) + float(item.get('quinta', 0)) + \
+                        float(item.get('sexta', 0)) + float(item.get('sabado', 0)) + \
+                        float(item.get('domingo', 0))
                 else:
-                    # Ordenação numérica para valores
+
                     return float(item.get(coluna_python, 0))
             
-            # Ordena a lista
+
             self._tabelaSemana = sorted(
                 self._tabelaSemana,
                 key=chave_ordem,
                 reverse=not ascendente
             )
             
-            # Notifica a interface sobre a mudança
+
             self.tabelaSemanaChanged.emit()
             print(f"Tabela ordenada por {coluna} em ordem {'ascendente' if ascendente else 'descendente'}")
             
@@ -107,7 +204,7 @@ class Backend(QObject):
                     periodos.append(periodo)
                     print(f"Adicionando período: {periodo}")
         
-        # Retornar lista ordenada de períodos únicos
+
         result = sorted(list(set(periodos)), key=self.mainwindow.chave_mes_ano)
         print(f"⚠️ Total de períodos para exibição: {len(result)}, meses = {result}")
         return result
@@ -115,18 +212,24 @@ class Backend(QObject):
     @pyqtSlot()
     def gerarTabelaSemana(self):
         try:
+            print("gerarTabelaSemana iniciado")
             pasta = "dados_mensais"
             arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
             arquivos = self._filtrar_arquivos_por_meses_ativos(arquivos)
+            
+            print(f"Gerando tabela da semana com {len(arquivos)} arquivos...")
+            
             if not self._mesesAtivos and len(self.mesesDisponiveis()) > 0:
                 self._mesesAtivos = self.mesesDisponiveis()
                 self.mesesAtivosChanged.emit()
+                
             if not arquivos:
                 self._tabelaSemana = []
                 self._rankingSemana = "Nenhum dado disponível"
                 self.tabelaSemanaChanged.emit()
                 self.rankingSemanaChanged.emit()
                 return
+                
             dfs = []
             for arq in arquivos:
                 file_path = os.path.join(pasta, arq)
@@ -140,49 +243,93 @@ class Backend(QObject):
                     df = df.loc[:, ~df.columns.duplicated()]
                     if not df.empty:
                         dfs.append(df)
+                        print(f"Arquivo {arq}: {len(df)} registros")
                 except Exception as e:
                     print(f"Erro ao processar {arq}: {str(e)}")
+                    
             if not dfs:
                 self._tabelaSemana = []
                 self._rankingSemana = "Dados insuficientes"
                 self.tabelaSemanaChanged.emit()
                 self.rankingSemanaChanged.emit()
                 return
+                
             df_total = pd.concat(dfs, ignore_index=True)
+            print(f"Total de registros concatenados: {len(df_total)}")
+            
             if "Data criação" not in df_total.columns or "Usuário" not in df_total.columns:
                 self._tabelaSemana = []
                 self._rankingSemana = "Colunas necessárias não encontradas"
                 self.tabelaSemanaChanged.emit()
                 self.rankingSemanaChanged.emit()
                 return
+                
             df_total["Data criação"] = pd.to_datetime(df_total["Data criação"], errors="coerce", dayfirst=True)
             df_total = df_total.dropna(subset=["Data criação"])
             df_total["dia_semana"] = df_total["Data criação"].dt.dayofweek
+            
             dias_map = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
             df_total["nome_dia"] = df_total["dia_semana"].map(dias_map)
+            
             pivot = pd.pivot_table(df_total, values="peso", index=["Usuário"], columns=["nome_dia"], aggfunc="sum", fill_value=0)
+            print(f"Tabela pivot criada: {pivot.shape}")
+            
             ordem_dias = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
-            ordem_dias = [d for d in ordem_dias if d in pivot.columns]
-            pivot = pivot[ordem_dias]
+            dias_disponiveis = [d for d in ordem_dias if d in pivot.columns]
+            
+
+            for dia in ordem_dias:
+                if dia not in pivot.columns:
+                    pivot[dia] = 0.0
+            
+            pivot = pivot[ordem_dias]  # Reordenar colunas
             pivot["Total"] = pivot.sum(axis=1)
             pivot = pivot.sort_values("Total", ascending=False)
+            
             resultado = []
+            dias_normalizados = {
+                "Segunda": "segunda",
+                "Terça": "terca",
+                "Quarta": "quarta", 
+                "Quinta": "quinta",
+                "Sexta": "sexta",
+                "Sábado": "sabado",
+                "Domingo": "domingo"
+            }
+            
             for usuario, row in pivot.iterrows():
-                item = {"usuario": usuario}
-                for dia in ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]:
-                    valor = float(row.get(dia, 0))
-                    chave_normalizada = self.normalizar_chave(dia)
+                item = {"usuario": str(usuario)}
+                for dia in ordem_dias:
+                    chave_normalizada = dias_normalizados.get(dia, self.normalizar_chave(dia))
+                    valor = float(row.get(dia, 0.0))
                     item[chave_normalizada] = 0.0 if pd.isna(valor) else valor
+                    
                 resultado.append(item)
+                
+            # Debug: verificar primeiro item
+            if resultado and len(resultado) > 0:
+                print(f"Primeiro item do resultado: {json.dumps(resultado[0], ensure_ascii=False)}")
+                print(f"Tipo do _tabelaSemana antes da atribuição: {type(self._tabelaSemana)}")
+                print(f"Tamanho antes da atribuição: {len(self._tabelaSemana) if isinstance(self._tabelaSemana, list) else 'não é lista'}")
+                
             totais_por_dia = pivot[ordem_dias].sum()
             ranking = []
             for dia, total in totais_por_dia.items():
                 ranking.append(f"{dia}: {total:.1f}")
+                
             ranking_text = "\n".join(ranking)
             self._tabelaSemana = resultado
+            print(f"Tipo do _tabelaSemana após a atribuição: {type(self._tabelaSemana)}")
+            print(f"Tamanho após a atribuição: {len(self._tabelaSemana)}")
             self._rankingSemana = ranking_text
+            
+            print(f"Tabela gerada com {len(resultado)} linhas")
+            print(f"Ranking gerado: {ranking_text}")
+            
             self.tabelaSemanaChanged.emit()
+            print("Sinal tabelaSemanaChanged emitido")
             self.rankingSemanaChanged.emit()
+            
         except Exception as e:
             print(f"Erro ao gerar tabela da semana: {str(e)}")
             import traceback
@@ -194,30 +341,31 @@ class Backend(QObject):
 
     @pyqtSlot(str)
     def toggleMesAtivo(self, mes):
-        """Ativa/desativa um mês na visualização"""
+        QApplication.processEvents()  # Garante que a UI esteja atualizada antes de prosseguir
+        
         if mes in self._mesesAtivos:
             self._mesesAtivos.remove(mes)
         else:
             self._mesesAtivos.append(mes)
         
-        # Emitir sinal para atualizar os visuais
         self.mesesAtivosChanged.emit()
-        
-        # Atualizar dados na ordem correta
         print(f"Atualizando dados após toggle de {mes}, meses ativos: {self._mesesAtivos}")
         
-        # IMPORTANTE: Ordem correta de atualização dos componentes
-        self.atualizar_kpis()
-        self.atualizar_grafico()
-        self.atualizar_tabela_pesos()
-        self.atualizar_grafico()
-        
-        # Forçar emissão dos sinais para garantir que a UI atualize
+        # IMPORTANTE: Primeiro notificar mudanças dos valores para QML reconfigurar o gráfico
         self.valoresChanged.emit()
         self.nomesChanged.emit()
+        
+        # Depois atualizar os dados em ordem específica
+        QApplication.processEvents()  # Garante processamento dos sinais antes de continuar
+        self.atualizar_kpis()
+        QApplication.processEvents()  # Pequena pausa para processamento
+        self.atualizar_tabela_pesos()
+        QApplication.processEvents()  # Pequena pausa para processamento
+        self.atualizar_grafico()  # Deixa o gráfico por último
+        
+        # Notificar os KPIs após todos os dados estarem prontos
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.kpisChanged.emit()
-
 
     @pyqtProperty('QStringList', notify=nomesChanged)
     def nomes(self):
@@ -238,20 +386,6 @@ class Backend(QObject):
     def arquivosCarregados(self):
         return self._arquivosCarregados
 
-    @pyqtProperty('QStringList', notify=nomesChanged)
-    def nomes(self):
-        return self._nomes
-
-    @pyqtProperty(list, notify=valoresChanged)
-    def valores(self):
-        return self._valores
-
-    @pyqtProperty(list, notify=tabelaPesosChanged)
-    def tabela_pesos(self):
-        return [
-            {'tipo': nome, 'peso': valor}
-            for nome, valor in zip(self._nomes, self._valores)]
-
     @pyqtProperty(list, notify=tabelaSemanaChanged)
     def tabelaSemana(self):
         if self._tabelaSemana and len(self._tabelaSemana) > 0:
@@ -262,25 +396,28 @@ class Backend(QObject):
     def rankingSemana(self):
         return self._rankingSemana
 
-    @pyqtProperty(str, notify=arquivosCarregadosChanged)
-    def arquivosCarregados(self):
-        return self._arquivosCarregados
-    
     def _filtrar_arquivos_por_meses_ativos(self, arquivos):
         """Filtra arquivos pelos meses ativos"""
         if not self._mesesAtivos:
-            # CORREÇÃO: Quando nenhum mês está ativo, mostrar TODOS os arquivos
-            # em vez de retornar lista vazia []
+            print("Nenhum mês ativo, retornando todos os arquivos")
             return arquivos  
         
         result = []
+        print(f"Meses ativos: {self._mesesAtivos}")
+        
         for arq in arquivos:
             file_path = os.path.join("dados_mensais", arq)
             periodo = self.mainwindow.extrair_mes_ano_do_arquivo(file_path)
-            if periodo and periodo.lower() in [m.lower() for m in self._mesesAtivos]:
+            meses_ativos_lower = [m.lower() for m in self._mesesAtivos]
+            
+            print(f"Arquivo: {arq}, Período: {periodo}")
+            print(f"Período em minúsculas: {periodo.lower() if periodo else None}")
+            print(f"Está nos meses ativos? {periodo.lower() in meses_ativos_lower if periodo else False}")
+            
+            if periodo and periodo.lower() in meses_ativos_lower:
                 result.append(arq)
         
-        print(f"Filtragem: {len(arquivos)} → {len(result)} arquivos")
+        print(f"Filtragem: {len(arquivos)} -> {len(result)} arquivos")
         return result
 
     @pyqtSlot()
@@ -292,7 +429,7 @@ class Backend(QObject):
             else []
         )
         
-        # Filtrar pelos meses ativos
+
         arquivos = self._filtrar_arquivos_por_meses_ativos(arquivos)
         
         dfs = []
@@ -382,9 +519,11 @@ class Backend(QObject):
     def atualizar_arquivos_carregados(self):
         """Atualiza a lista de arquivos carregados e meses disponíveis"""
         pasta = "dados_mensais"
+        
         if not os.path.exists(pasta):
             self._arquivosCarregados = "Nenhum arquivo carregado"
             self._mesesAtivos = []
+        
         else:
             arquivos = sorted([arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")])
             periodos = []
@@ -403,17 +542,11 @@ class Backend(QObject):
         self.arquivosCarregadosChanged.emit()
         self.mesesAtivosChanged.emit()
 
-
     @pyqtSlot()
     def atualizar_grafico(self):
         pasta = "dados_mensais"
-        arquivos = (
-            [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")]
-            if os.path.exists(pasta)
-            else []
-        )
+        arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
         
-        # Filtrar pelos meses ativos
         arquivos = self._filtrar_arquivos_por_meses_ativos(arquivos)
         
         dfs = []
@@ -425,43 +558,38 @@ class Backend(QObject):
             df = df.loc[:, ~df.columns.duplicated()]
             if not df.empty:
                 dfs.append(df)
-        
-        # Quando não há dados, mostrar arrays vazios
+    
         if not dfs:
-            self._nomes = []
-            self._valores = []
+            self._nomes = ["Sem dados disponíveis"]
+            self._valores = [0]
             self.nomesChanged.emit()
             self.valoresChanged.emit()
             return
+    
+        # Resto do código permanece igual
 
         df_total = pd.concat(dfs, ignore_index=True)
         df_total = df_total.loc[:, ~df_total.columns.duplicated()]
         
-        # CORREÇÃO: Garantir limpeza de dados antes de usar
         if "Usuário" in df_total.columns and "peso" in df_total.columns:
-            # Filtrar linhas onde usuário é NaN ou string vazia
+
             df_total = df_total[df_total["Usuário"].notna() & (df_total["Usuário"] != "")]
-            
-            # Garantir que só agrupa por usuário e peso, não por agendamento
+
+
             produtividade = df_total.groupby("Usuário")["peso"].sum()
-            
-            # Remover índices NaN do resultado do groupby
             produtividade = produtividade[produtividade.index.notna()]
-            
             produtividade = produtividade.sort_values(ascending=False)
-            self._nomes = list(produtividade.index)
-            self._valores = [float(v) for v in produtividade.values]
-        # ...resto do método
+            
+            self._nomes = list(produtividade.index)[:20]
+            self._valores = [max(1.0, float(v)) for v in produtividade.values[:20]]
 
         elif "Usuário" in df_total.columns:
             produtividade = df_total.groupby("Usuário").size()
-            
-            # Remover índices NaN do resultado do groupby
             produtividade = produtividade[produtividade.index.notna()]
-            
             produtividade = produtividade.sort_values(ascending=False)
             self._nomes = list(produtividade.index)
             self._valores = [float(v) for v in produtividade.values]
+
         else:
             self._nomes = []
             self._valores = []
@@ -475,9 +603,9 @@ class Backend(QObject):
     def importar_arquivo_excel(self):
         self.mainwindow.importar_arquivo_excel()
         self.atualizar_arquivos_carregados()
-        self.atualizar_kpis
-        self.atualizar_grafico
-        self.atualizar_tabela_pesos
+        self.atualizar_kpis()
+        self.atualizar_grafico()
+        self.atualizar_tabela_pesos()
 
     def _coletar_tipos_brutos(self):
         pasta = "dados_mensais"
@@ -550,20 +678,20 @@ class Backend(QObject):
     def salvarPesos(self):
         """Salva os pesos atuais em novo arquivo com timestamp na pasta 'pesos salvos' do projeto"""
         try:
-            # Caminho absoluto da pasta do script principal
+
             pasta_base = os.path.dirname(os.path.abspath(__file__))
             pasta_pesos = os.path.join(pasta_base, "pesos salvos")
             os.makedirs(pasta_pesos, exist_ok=True)
 
-            # Gerar nome do arquivo com timestamp
+
             timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             arquivo = os.path.join(pasta_pesos, f"pesos_{timestamp}.json")
 
-            # Salvar cópia dos pesos atuais
+
             with open(arquivo, 'w', encoding='utf-8') as f:
                 json.dump(dict(self.mainwindow.gerenciador_pesos.pesos), f, ensure_ascii=False, indent=4)
 
-            # Feedback para o usuário
+
             QMessageBox.information(self.mainwindow, "Pesos Salvos", f"Arquivo salvo em:\n{arquivo}")
 
         except Exception as e:
@@ -586,19 +714,18 @@ class Backend(QObject):
     @pyqtSlot()
     def restaurarPesosPadrao(self):
         if hasattr(self.mainwindow, 'gerenciador_pesos'):
-            # 1. Usar os tipos de agendamento atuais (não buscar tipos novos)
-            tipos_atuais = self._nomes  # Mantem os nomes atuais na tabela
+
+            tipos_atuais = self._nomes
             
-            # 2. Reset no gerenciador de pesos
+
             self.mainwindow.gerenciador_pesos.pesos = {
                 tipo: 1.0 for tipo in tipos_atuais
             }
             self.mainwindow.gerenciador_pesos.salvar_pesos()
             
-            # 3. Atualizar apenas os valores sem mexer nos nomes
+
             self._valores = [1.0] * len(tipos_atuais)
             
-            # 4. Forçar sincronização na interface
             self.tabelaPesosChanged.emit()
             self.valoresChanged.emit()
             self.gerarTabelaSemana()
@@ -660,15 +787,15 @@ class MainWindow(QMainWindow):
         try:
             df = self.carregar_planilha(file_path)
             if "Data criação" in df.columns and not df.empty:
-                #&@ Converte explicitamente para datetime, sempre com dayfirst=True
+
                 datas = pd.to_datetime(df["Data criação"], errors="coerce", dayfirst=True)
                 datas = datas.dropna()
                 if not datas.empty:
-                    #& Usa o mês/ano mais frequente (modo), que é o mais representativo do arquivo
+
                     mes_anos = datas.dt.strftime("%m/%Y")
                     mes_ano_mais_frequente = mes_anos.mode()[0]
                     mes, ano = mes_ano_mais_frequente.split("/")
-                    #& Mapeamento para português
+
                     MESES_PT = [
                         "jan", "fev", "mar", "abr", "mai", "jun",
                         "jul", "ago", "set", "out", "nov", "dez"
@@ -677,7 +804,7 @@ class MainWindow(QMainWindow):
                     return f"{mes_pt}/{ano}"
         except Exception as e:
             print(f"Erro ao extrair mês/ano: {e}")
-        #&& Fallback: retorna o nome do arquivo sem extensão
+
         return os.path.basename(file_path).replace(".xlsx", "")
 
     def importar_arquivo_excel(self):
@@ -696,7 +823,7 @@ class MainWindow(QMainWindow):
             try:
                 nome_destino = os.path.basename(path)
                 destino = os.path.join(pasta, nome_destino)
-                # Se for .xls, converte para .xlsx e salva apenas o .xlsx
+
                 if path.lower().endswith(".xls"):
                     x2x = XLS2XLSX(path)
                     novo_destino = os.path.splitext(destino)[0] + ".xlsx"
@@ -831,15 +958,15 @@ class GerenciadorPesosAgendamento:
         self.carregar_pesos()
 
     def restaurar_pesos_padrao(self, tipos_atuais: list):
-        self.pesos = {tipo: 1.0 for tipo in tipos_atuais}  # Sobrescreve completamente
-        self.salvar_pesos()  # Persistência imediata
+        self.pesos = {tipo: 1.0 for tipo in tipos_atuais}
+        self.salvar_pesos()
 
 
     def carregar_pesos(self):
         try:
             with open(self.arquivo_pesos, 'r', encoding='utf-8') as f:
                 dados = json.load(f)
-                self.pesos = dict(dados)  # ✅ Converte para dict normal
+                self.pesos = dict(dados)
         except (FileNotFoundError, json.JSONDecodeError):
             self.pesos = {}
 
@@ -855,30 +982,33 @@ class GerenciadorPesosAgendamento:
         return 1.0
 
     def obter_peso(self, tipo_agendamento):
-        # Normalizar o tipo de agendamento para maior consistência
+
         tipo_normalizado = str(tipo_agendamento).strip().upper()
         peso = self.pesos.get(tipo_normalizado)
         
-        # Se não encontrar, tente com variações comuns
+
         if peso is None:
-            # Tentar sem parênteses
+
             tipo_sem_parenteses = re.sub(r'\s*\(.*?\)', '', tipo_normalizado).strip()
             peso = self.pesos.get(tipo_sem_parenteses)
             
-            # Se ainda não encontrar, use o padrão
+
             if peso is None:
                 peso = 1.0
                 
-        return float(peso)  # Garantir que é float
+        return float(peso)
 
 
 if __name__ == "__main__":
     try:
-        app = QApplication(sys.argv)
+        sys.stdout.reconfigure(encoding='utf-8')
+
+        filtered_args = [arg for arg in sys.argv if not arg.startswith('ljsdebugger=')]
+        app = QApplication(filtered_args)
         app.setApplicationName("KPI App")
         engine = QQmlApplicationEngine()
 
-        # Criar a pasta de dados se não existir
+
         os.makedirs("dados_mensais", exist_ok=True)
 
         mainwindow = MainWindow()
@@ -887,20 +1017,19 @@ if __name__ == "__main__":
         mainwindow.kpis_qml = kpis
         mainwindow.backend_qml = backend
 
-        # Definir propriedades de contexto para QML
+
         engine.rootContext().setContextProperty("mainwindow", mainwindow)
         engine.rootContext().setContextProperty("backend", backend)
         engine.rootContext().setContextProperty("kpis", kpis)
 
-        # Inicializar dados em ordem segura
-        backend.atualizar_arquivos_carregados()  # Primeiro os arquivos e meses
-        # NÃO force a leitura de mesesDisponiveis aqui - isso causará problemas
-        backend.atualizar_grafico()  # Depois os gráficos
-        backend.atualizar_kpis()     # Por fim os KPIs
+
+        backend.atualizar_arquivos_carregados()
+
+        backend.atualizar_grafico()
+        backend.atualizar_kpis()
         print("Gerando tabela da semana na inicialização...")
         backend.gerarTabelaSemana() 
 
-        # Carregar o QML depois da inicialização dos dados
         qml_file = os.path.join(os.path.dirname(__file__), "MainWindow.qml")
         engine.load(qml_file)
         
@@ -913,4 +1042,3 @@ if __name__ == "__main__":
         print(f"ERRO DE INICIALIZAÇÃO: {str(e)}")
         import traceback
         traceback.print_exc()
-        

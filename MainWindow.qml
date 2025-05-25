@@ -130,21 +130,20 @@ ApplicationWindow {
                                     : dashboardPage
                     
                     
+                                        // No Loader do pageLoader (aproximadamente linha 84), modifique:
+                    
                     onLoaded: {
-                        if (currentPage === "dashboard" && backend && backend.atualizar_grafico) {
-                            console.log("Chamando atualizar_grafico");
+                        if (currentPage === "dashboard" && backend) {
                             backend.atualizar_grafico()
                         }
-                        if (currentPage === "pesos" && backend && backend.atualizar_tabela_pesos) {
-                            console.log("Chamando atualizar_tabela_pesos");
+                        if (currentPage === "pesos" && backend) {
                             backend.atualizar_tabela_pesos()
                             pesosModel.clear()
                             for (var i = 0; i < backend.tabela_pesos.length; ++i) {
                                 pesosModel.append(backend.tabela_pesos[i])
                             }
                         }
-                        if (currentPage === "semana" && backend && typeof backend.gerarTabelaSemana === "function") {
-                            console.log("Página semana selecionada - atualizando dados");
+                        if (currentPage === "semana" && backend) {
                             backend.gerarTabelaSemana();
                         }
                     }
@@ -650,7 +649,7 @@ ApplicationWindow {
 
                                 BarSet {
                                     label: "Minutas"
-                                    values: backend.valores && backend.valores.length > 0 ? backend.valores : []
+                                    values: backend && backend.valores && backend.valores.length > 0 ? backend.valores : [0]
                                     brushFilename: "assets/gradients/bargradient.png"
                                     labelFont: Qt.font({ pixelSize: 16, bold: true, family: "Arial" })
                                     labelColor: "#1976d2"
@@ -659,7 +658,7 @@ ApplicationWindow {
 
                             BarCategoryAxis {
                                 id: eixoUsuarios
-                                categories: backend.nomes && backend.nomes.length > 0 ? backend.nomes : [" "]
+                                categories: backend && backend.nomes && backend.nomes.length > 0 ? backend.nomes : [" "]
                                 labelsFont.pixelSize: 14
                                 labelsFont.bold: true
                                 labelsColor: "#232946"
@@ -668,13 +667,24 @@ ApplicationWindow {
                             ValueAxis {
                                 id: eixoValores
                                 min: 0
-                                max: backend.valores && backend.valores.length > 0 ? Math.max.apply(Math, backend.valores) * 1.1 : 1
+                                max: {
+                                    if (!backend || !backend.valores || backend.valores.length === 0)
+                                        return 20;
+                                        
+                                    var maxVal = 0;
+                                    for (var i = 0; i < backend.valores.length; i++) {
+                                        if (!isNaN(backend.valores[i]))
+                                            maxVal = Math.max(maxVal, backend.valores[i]);
+                                    }
+                                    return Math.max(20, Math.ceil(maxVal * 1.1));
+                                }
+                                tickCount: 5
                                 labelFormat: "%.0f"
                             }
 
                             Text {
                                 anchors.centerIn: parent
-                                visible: !backend.valores || backend.valores.length === 0
+                                visible: !backend || !backend.valores || backend.valores.length === 0
                                 text: "Nenhum dado disponível para os meses selecionados."
                                 color: "#3cb3e6"
                                 font.pixelSize: 20
@@ -1059,37 +1069,34 @@ ApplicationWindow {
     }
 
         // Página semanaPage otimizada com alinhamentos, rolagem e ordenação
-    Component {
+        Component {
         id: semanaPage
     
         Rectangle {
             color: "transparent"
             Layout.fillWidth: true
             Layout.fillHeight: true
-    
-            // Propriedades para ordenação
+
             property bool sortAscending: true
             property string sortColumn: "usuario"
+            property string filtroUsuario: ""
     
-            // Modelo de dados para o ranking
             ListModel {
                 id: rankingModel
             }
             
-            // Função para atualizar o modelo de ranking
             function updateRankingModel() {
-                rankingModel.clear();
-                if (backend && backend.rankingSemana) {
-                    var lines = backend.rankingSemana.split('\n');
-                    for (var i = 0; i < lines.length; i++) {
-                        if (lines[i].trim().length > 0) {
-                            rankingModel.append({"rankText": lines[i]});
-                        }
-                    }
-                }
+    rankingModel.clear();
+    if (backend && backend.rankingSemana) {
+        var lines = backend.rankingSemana.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+            if (lines[i].trim().length > 0) {
+                rankingModel.append({"rankText": lines[i]});
             }
-            
-            // Função para ordenar a tabela
+        }
+    }
+}
+
             function sortTable(column) {
                 if (sortColumn === column) {
                     sortAscending = !sortAscending;
@@ -1102,11 +1109,22 @@ ApplicationWindow {
                     backend.ordenarTabelaSemana(sortColumn, sortAscending);
                 }
             }
-            
-            Component.onCompleted: {
-                updateRankingModel();
+
+            function exportarParaCSV() {
+                if (backend && backend.tabelaSemana && backend.tabelaSemana.length > 0) {
+                    backend.exportarTabelaSemanaCSV();
+                }
             }
-            
+
+            // Unificar os dois Component.onCompleted em um só
+            Component.onCompleted: {
+                console.log("Inicializando página da semana")
+                updateRankingModel();
+                if (backend) {
+                    backend.gerarTabelaSemana()
+                }
+            }
+
             Connections {
                 target: backend
                 function onRankingSemanaChanged() {
@@ -1129,8 +1147,113 @@ ApplicationWindow {
                     Layout.topMargin: 8
                     Layout.bottomMargin: 4
                 }
+                
+                // Nova barra de controle para filtro e exportação
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 60
+                    Layout.preferredWidth: Math.min(parent.width - 40, 1200)
+                    Layout.alignment: Qt.AlignHCenter
+                    color: "#f5faff"
+                    radius: 12
+                    border.width: 1
+                    border.color: "#3cb3e6"
+                    
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 20
+                        
+                        Text {
+                            text: "Filtrar por usuário:"
+                            font.pixelSize: 15
+                            color: "#1976d2"
+                            font.bold: true
+                        }
+                        
+                        Rectangle {
+                            Layout.preferredWidth: 250
+                            Layout.preferredHeight: 36
+                            color: "#ffffff"
+                            radius: 6
+                            border.width: 1
+                            border.color: "#3cb3e6"
+                            
+                            TextInput {
+                                id: filtroInput
+                                anchors.fill: parent
+                                anchors.margins: 8
+                                verticalAlignment: TextInput.AlignVCenter
+                                font.pixelSize: 14
+                                color: "#232946"
+                                selectByMouse: true
+                                
+                                onTextChanged: {
+                                    filtroUsuario = text.toUpperCase();
+                                    if (backend) {
+                                        backend.filtrarTabelaSemana(filtroUsuario);
+                                    }
+                                }
+                                
+                                Text {
+                                    anchors.fill: parent
+                                    text: "Digite para filtrar..."
+                                    font.pixelSize: 14
+                                    color: "#aaaaaa"
+                                    visible: !parent.text
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                        
+                        Item { Layout.fillWidth: true }
+                        
+                        Rectangle {
+                            Layout.preferredWidth: 160
+                            Layout.preferredHeight: 36
+                            radius: 8
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: "#4caf50" }
+                                GradientStop { position: 1.0; color: "#2e7d32" }
+                            }
+                            
+                            property bool hovered: false
+                            scale: hovered ? 1.03 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 120 } }
+                            
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: parent.hovered = true
+                                onExited: parent.hovered = false
+                                onClicked: exportarParaCSV()
+                            }
+                            
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 8
+                                
+                                Image {
+                                    source: "assets/icons/excel.png"
+                                    Layout.preferredWidth: 20
+                                    Layout.preferredHeight: 20
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                                
+                                Text {
+                                    text: "Exportar CSV"
+                                    color: "#fff"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                            }
+                        }
+                    }
+                }
     
-                // Container principal - usa mais espaço da tela
                 Rectangle {
                     id: mainContainer
                     Layout.fillWidth: true
@@ -1144,7 +1267,6 @@ ApplicationWindow {
                     Layout.preferredWidth: Math.min(parent.width - 40, 1200)
                     Layout.alignment: Qt.AlignHCenter
     
-                    // Mensagem para quando não houver dados
                     Text {
                         anchors.centerIn: parent
                         visible: !(backend && backend.tabelaSemana && backend.tabelaSemana.length > 0)
@@ -1154,26 +1276,23 @@ ApplicationWindow {
                         font.bold: true
                     }
     
-                    // Layout da tabela
                     Column {
                         id: tableLayout
                         anchors.fill: parent
-                        anchors.bottomMargin: 100 // Espaço para o painel inferior
+                        anchors.bottomMargin: 100
                         spacing: 0
                         visible: backend && backend.tabelaSemana && backend.tabelaSemana.length > 0
     
-                        // Cabeçalho da tabela fixo
                         Rectangle {
                             id: headerRect
                             width: parent.width
                             height: 50
                             color: "#e3f2fd"
-                            z: 10 // Garantir que fique acima durante a rolagem
+                            z: 10
     
                             Row {
                                 anchors.fill: parent
     
-                                // Coluna Usuário
                                 Rectangle {
                                     width: 220
                                     height: parent.height
@@ -1190,7 +1309,6 @@ ApplicationWindow {
                                             color: "#1976d2"
                                         }
                                         
-                                        // Ícone de ordenação
                                         Text {
                                             text: sortColumn === "usuario" ? (sortAscending ? "▲" : "▼") : ""
                                             font.pixelSize: 14
@@ -1199,7 +1317,6 @@ ApplicationWindow {
                                         }
                                     }
                                     
-                                    // Área clicável para ordenação
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
@@ -1207,7 +1324,6 @@ ApplicationWindow {
                                     }
                                 }
     
-                                // Colunas para dias da semana
                                 Repeater {
                                     model: [
                                         {name: "Segunda", key: "Segunda"},
@@ -1220,7 +1336,7 @@ ApplicationWindow {
                                     ]
                                     
                                     Rectangle {
-                                        width: (parent.width - 220) / 7
+                                        width: (parent.width - 220 - 120) / 7
                                         height: parent.height
                                         color: "transparent"
                                         
@@ -1235,7 +1351,6 @@ ApplicationWindow {
                                                 color: "#1976d2"
                                             }
                                             
-                                            // Ícone de ordenação
                                             Text {
                                                 text: sortColumn === modelData.key ? (sortAscending ? "▲" : "▼") : ""
                                                 font.pixelSize: 14
@@ -1244,7 +1359,6 @@ ApplicationWindow {
                                             }
                                         }
                                         
-                                        // Área clicável para ordenação
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
@@ -1252,9 +1366,40 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                                
+                                // Coluna Total
+                                Rectangle {
+                                    width: 120
+                                    height: parent.height
+                                    color: "transparent"
+                                    
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 5
+                                        
+                                        Text {
+                                            text: "Total"
+                                            font.pixelSize: 16
+                                            font.bold: true
+                                            color: "#1976d2"
+                                        }
+                                        
+                                        Text {
+                                            text: sortColumn === "Total" ? (sortAscending ? "▲" : "▼") : ""
+                                            font.pixelSize: 14
+                                            color: "#3cb3e6"
+                                            font.bold: true
+                                        }
+                                    }
+                                    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: sortTable("Total")
+                                    }
+                                }
                             }
     
-                            // Linha separadora
                             Rectangle {
                                 anchors.bottom: parent.bottom
                                 width: parent.width
@@ -1263,7 +1408,6 @@ ApplicationWindow {
                             }
                         }
     
-                        // ScrollView MELHORADO para os dados da tabela
                         ScrollView {
                             id: tableScrollView
                             width: parent.width
@@ -1277,21 +1421,44 @@ ApplicationWindow {
                                 id: tableContent
                                 width: tableScrollView.width
                                 spacing: 0
-                        
+
+                                 Component.onCompleted: {
+                                    if (backend && backend.tabelaSemana && backend.tabelaSemana.length > 0) {
+                                        console.log("Dados da tabela disponíveis: " + backend.tabelaSemana.length + " linhas");
+                                        console.log("Primeira linha: " + JSON.stringify(backend.tabelaSemana[0]));
+                                    } else {
+                                        console.log("Sem dados na tabela");
+                                    }
+                                }
+
+
                                 Repeater {
                                     model: backend && backend.tabelaSemana ? backend.tabelaSemana : []
-
+                                    
                                     Rectangle {
                                         id: userRowItem
                                         width: tableContent.width
                                         height: 40
-                                        color: index % 2 === 0 ? "#f5faff" : "#ffffff" // Cores alternadas
-                                        
+                                        color: index % 2 === 0 ? "#f5faff" : "#ffffff"
+
+                                        // Diagnóstico adicional, remova após resolver
                                         Component.onCompleted: {
-                                            console.log("userRowItem modelData:", JSON.stringify(modelData))
+                                            console.log("Criando linha para usuário: " + modelData.usuario);
+                                            console.log("Dados do dia segunda: " + modelData.segunda);
                                         }
-                                        
-                                        // Efeito de hover como primeira camada
+
+                                        // Cálculo do total da linha
+                                        property real rowTotal: {
+                                            if (!modelData) return 0.0;
+                                            return Number(modelData.segunda || 0) +
+                                                   Number(modelData.terca || 0) +
+                                                   Number(modelData.quarta || 0) +
+                                                   Number(modelData.quinta || 0) +
+                                                   Number(modelData.sexta || 0) +
+                                                   Number(modelData.sabado || 0) +
+                                                   Number(modelData.domingo || 0);
+                                        }
+
                                         Rectangle {
                                             id: hoverHighlight
                                             anchors.fill: parent
@@ -1300,8 +1467,7 @@ ApplicationWindow {
                                             Behavior on opacity { NumberAnimation { duration: 100 } }
                                             z: 1
                                         }
-                                        
-                                        // MouseArea FORA da Row, mas DENTRO do Rectangle pai
+
                                         MouseArea {
                                             id: rowHoverArea
                                             anchors.fill: parent
@@ -1311,24 +1477,23 @@ ApplicationWindow {
                                             onExited: hoverHighlight.opacity = 0
                                             propagateComposedEvents: false
                                         }
-                                        
-                                        // Row principal com o conteúdo
+
                                         Row {
                                             z: 2
                                             width: parent.width
                                             height: parent.height
                                             
-                                            // Coluna Usuário
+                                            // Coluna do usuário
                                             Rectangle {
                                                 width: 220
                                                 height: parent.height
                                                 color: "transparent"
-                                    
+                                        
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     anchors.left: parent.left
                                                     anchors.leftMargin: 16
-                                                    text: modelData.usuario
+                                                    text: modelData ? modelData.usuario : ""
                                                     font.pixelSize: 15
                                                     font.bold: true
                                                     color: "#232946"
@@ -1336,14 +1501,16 @@ ApplicationWindow {
                                                     width: 200
                                                 }
                                             }
-
-                                            
+                                
+                                            // Colunas dos dias da semana
                                             Repeater {
+                                                id: dayColumnRepeater
                                                 model: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+                                                
                                                 Rectangle {
                                                     id: dayColumnDelegate
-                                                    width: (parent.width - 220) / 7
-                                                    height: 40
+                                                    width: (userRowItem.width - 220 - 120) / 7
+                                                    height: parent.height
                                                     color: "transparent"
                                                     
                                                     Rectangle {
@@ -1352,12 +1519,11 @@ ApplicationWindow {
                                                         height: 28
                                                         radius: 6
                                                         
-                                                        property var itemData: parent.parent.parent.parent.modelData
-                                                        property string currentDay: dayColumnDelegate.modelData
-                                                        
+                                                        property string dayKey: modelData
                                                         property real dayValue: {
-                                                            if (!itemData) return 0.0;
-                                                            return Number(itemData[currentDay] || 0)
+                                                            if (!userRowItem.modelData) return 0.0;
+                                                            var val = Number(userRowItem.modelData[dayKey]);
+                                                            return isNaN(val) ? 0.0 : val;
                                                         }
                                                         
                                                         color: dayValue > 50 ? "#a3d4ff" : dayValue > 20 ? "#d9eaf7" : "#f7f7f7"
@@ -1374,12 +1540,36 @@ ApplicationWindow {
                                                     }
                                                 }
                                             }
+
+                                            // Coluna de Total
+                                            Rectangle {
+                                                width: 120
+                                                height: 40
+                                                color: "transparent"
+                                                
+                                                Rectangle {
+                                                    anchors.centerIn: parent
+                                                    width: 90
+                                                    height: 30
+                                                    radius: 6
+                                                    color: userRowItem.rowTotal > 200 ? "#e1f5fe" : "#f5f5f5"
+                                                    border.width: 1
+                                                    border.color: userRowItem.rowTotal > 200 ? "#03a9f4" : "#e0e0e0"
+                                                    
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: userRowItem.rowTotal.toFixed(1)
+                                                        font.pixelSize: 15
+                                                        font.bold: userRowItem.rowTotal > 200
+                                                        color: userRowItem.rowTotal > 0 ? "#232946" : "#9e9e9e"
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
-
-                            // Barra de rolagem personalizada com tom azul
+    
                             ScrollBar {
                                 id: vScrollBar
                                 orientation: Qt.Vertical
@@ -1409,7 +1599,6 @@ ApplicationWindow {
                         }
                     }
     
-                    // Container inferior para ranking e botão
                     Rectangle {
                         id: bottomPanel
                         anchors.bottom: parent.bottom
@@ -1423,7 +1612,6 @@ ApplicationWindow {
                             anchors.margins: 10
                             spacing: 20
     
-                            // Painel de Ranking - visual otimizado
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 80
@@ -1432,7 +1620,6 @@ ApplicationWindow {
                                 border.color: "#3cb3e6"
                                 border.width: 1
     
-                                // Título do ranking
                                 Text {
                                     id: rankingTitle
                                     text: "Produtividade geral por dia da semana"
@@ -1446,7 +1633,6 @@ ApplicationWindow {
                                     }
                                 }
     
-                                // ScrollView horizontal para o ranking
                                 ScrollView {
                                     id: rankingScroll
                                     anchors {
@@ -1495,7 +1681,6 @@ ApplicationWindow {
                                         spacing: 16
                                         anchors.verticalCenter: parent.verticalCenter
     
-                                        // Repeater usando o modelo do ListModel
                                         Repeater {
                                             model: rankingModel
     
@@ -1522,7 +1707,6 @@ ApplicationWindow {
                                 }
                             }
     
-                            // Botão Atualizar Dados - corrigido usando o mesmo padrão dos outros botões
                             Rectangle {
                                 Layout.preferredWidth: 180
                                 Layout.preferredHeight: 50
@@ -1532,7 +1716,6 @@ ApplicationWindow {
                                     GradientStop { position: 1.0; color: "#1976d2" }
                                 }
                                 
-                                // Adicionar efeito de hover
                                 property bool hovered: false
                                 scale: hovered ? 1.03 : 1.0
                                 Behavior on scale { NumberAnimation { duration: 120 } }
@@ -1552,7 +1735,6 @@ ApplicationWindow {
                                     }
                                 }
                             
-                                // Use RowLayout como nos outros botões
                                 RowLayout {
                                     anchors.centerIn: parent
                                     spacing: 8
@@ -1564,7 +1746,7 @@ ApplicationWindow {
                                         fillMode: Image.PreserveAspectFit
                                         Layout.alignment: Qt.AlignVCenter
                                     }
-
+    
                                     Text {
                                         text: "Atualizar Dados"
                                         color: "#fff"
@@ -1579,5 +1761,5 @@ ApplicationWindow {
                 }
             }
         }
-    }
+     }
 }
