@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QMainWindow
 from PyQt6.QtQml import QQmlApplicationEngine, QQmlContext
 from xls2xlsx import XLS2XLSX
@@ -49,6 +49,8 @@ class Backend(QObject):
     arquivosCarregadosChanged = pyqtSignal()
     tabelaPesosChanged = pyqtSignal()
     mesesAtivosChanged = pyqtSignal()
+    tabelaSemanaChanged = pyqtSignal()
+    rankingSemanaChanged = pyqtSignal()
 
     def __init__(self, mainwindow):
         super().__init__()
@@ -57,13 +59,134 @@ class Backend(QObject):
         self._valores = []
         self._arquivosCarregados = ""
         self._mesesAtivos = []
+        self._tabelaSemana = []
+        self._rankingSemana = ""
 
-    @pyqtProperty('QStringList', notify=mesesAtivosChanged)
+    def filtrar_usuario_excluido(df, usuario_excluido="secautoloc"):
+        if "Usuário" in df.columns:
+            return df[df["Usuário"].str.lower() != usuario_excluido.lower()]
+        return df
+
+
+    @pyqtProperty(list, notify=tabelaSemanaChanged)
+    def tabelaSemana(self):
+        print(f"Acessando tabelaSemana: {len(self._tabelaSemana)} itens")
+        # Para depuração, você pode imprimir o primeiro item se existir
+        if self._tabelaSemana and len(self._tabelaSemana) > 0:
+            print(f"Primeiro item: {self._tabelaSemana[0]}")
+        return self._tabelaSemana
+
+    @pyqtProperty(str, notify=rankingSemanaChanged)
+    def rankingSemana(self):
+        return self._rankingSemana
+
+    @pyqtProperty(list, notify=mesesAtivosChanged)
     def mesesAtivos(self):
         return self._mesesAtivos
 
+    @pyqtSlot()
+    def gerarTabelaSemana(self):
+        try:
+            print("Iniciando gerarTabelaSemana()")
+            pasta = "dados_mensais"
+            arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
+            arquivos = self._filtrar_arquivos_por_meses_ativos(arquivos)
     
-    @pyqtProperty('QStringList', notify=arquivosCarregadosChanged)
+            if not arquivos:
+                print("Nenhum arquivo encontrado ou selecionado")
+                self._tabelaSemana = []
+                self._rankingSemana = "Nenhum dado disponível"
+                self.tabelaSemanaChanged.emit()
+                self.rankingSemanaChanged.emit()
+                return
+    
+            print(f"Processando {len(arquivos)} arquivos")
+            dfs = []
+            for arq in arquivos:
+                file_path = os.path.join(pasta, arq)
+                try:
+                    df = carregar_planilha(file_path, self.mainwindow.gerenciador_pesos)
+                    if df is not None and not df.empty:
+                        df = Backend.filtrar_usuario_excluido(df)
+                        if "Usuário" in df.columns:
+                            df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+                        df = df.loc[:, ~df.columns.duplicated()]
+                        dfs.append(df)
+                except Exception as e:
+                    print(f"Erro ao processar {arq}: {str(e)}")
+    
+            if not dfs:
+                print("Nenhum dataframe válido encontrado")
+                self._tabelaSemana = []
+                self._rankingSemana = "Dados insuficientes"
+                self.tabelaSemanaChanged.emit()
+                self.rankingSemanaChanged.emit()
+                return
+    
+            df_total = pd.concat(dfs, ignore_index=True)
+            
+            print(f"Processando dataframe consolidado com {len(df_total)} registros")
+            
+            # Verificar colunas necessárias
+            colunas_necessarias = ["Usuário", "Data criação", "peso"]
+            if not all(col in df_total.columns for col in colunas_necessarias):
+                print(f"Colunas necessárias ausentes. Colunas disponíveis: {df_total.columns.tolist()}")
+                self._tabelaSemana = []
+                self._rankingSemana = "Dados insuficientes (colunas necessárias ausentes)"
+                self.tabelaSemanaChanged.emit()
+                self.rankingSemanaChanged.emit()
+                return
+    
+            # Processamento dos dados
+            df_total["Data criação"] = pd.to_datetime(df_total["Data criação"], errors="coerce", dayfirst=True)
+            df_total = df_total.dropna(subset=["Usuário", "Data criação", "peso"])
+            
+            # Criar mapeamento correto para dias da semana
+            dias_semana = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado', 'Domingo']
+            df_total["dia_semana"] = df_total["Data criação"].dt.dayofweek  # 0=Segunda, 6=Domingo
+            df_total["DiaSemana"] = df_total["dia_semana"].map(lambda x: dias_semana[x])
+    
+            # Gerar tabela pivô
+            tabela = df_total.pivot_table(
+                index="Usuário", 
+                columns="DiaSemana", 
+                values="peso", 
+                aggfunc="sum", 
+                fill_value=0
+            ).reindex(columns=dias_semana, fill_value=0)
+    
+            # Converter para formato QML
+            tabela_qml = []
+            print(f"Gerando dados para {len(tabela)} usuários")
+            for usuario, row in tabela.iterrows():
+                item = {"usuario": usuario}
+                for dia in dias_semana:
+                    item[dia] = float(row.get(dia, 0))
+                tabela_qml.append(item)
+                
+            # Estatísticas
+            soma_por_dia = tabela.sum(axis=0)
+            ranking = soma_por_dia.sort_values(ascending=False)
+            ranking_str = "\n".join([f"{i+1}º - {dia}: {valor:.2f}" for i, (dia, valor) in enumerate(ranking.items())])
+    
+            self._tabelaSemana = tabela_qml
+            self._rankingSemana = ranking_str
+    
+            print(f"Tabela gerada com sucesso: {len(tabela_qml)} registros")
+            print(f"Ranking: {ranking_str}")
+    
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"Erro ao gerar tabela: {str(e)}")
+            self._tabelaSemana = []
+            self._rankingSemana = f"Erro no processamento: {str(e)}"
+    
+        # Emitir sinais independente do resultado
+        self.tabelaSemanaChanged.emit()
+        self.rankingSemanaChanged.emit()
+
+    @pyqtProperty(list, notify=arquivosCarregadosChanged)
     def mesesDisponiveis(self):
         
         pasta = "dados_mensais"
@@ -96,9 +219,11 @@ class Backend(QObject):
         self.mesesAtivosChanged.emit()
         self.atualizar_kpis()
         self.atualizar_grafico()
+        QTimer.singleShot(50, self.atualizar_grafico)
         self.atualizar_tabela_pesos()
         self.valoresChanged.emit()
         self.nomesChanged.emit()
+
 
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.kpisChanged.emit()
@@ -119,25 +244,10 @@ class Backend(QObject):
     def arquivosCarregados(self):
         return self._arquivosCarregados
 
-    @pyqtProperty('QStringList', notify=nomesChanged)
-    def nomes(self):
-        return self._nomes
-
     @pyqtProperty(list, notify=valoresChanged)
     def valores(self):
         return self._valores
-
-    @pyqtProperty(list, notify=tabelaPesosChanged)
-    def tabela_pesos(self):
-        return [
-            {'tipo': nome, 'peso': valor}
-            for nome, valor in zip(self._nomes, self._valores)
-        ]
-
-    @pyqtProperty(str, notify=arquivosCarregadosChanged)
-    def arquivosCarregados(self):
-        return self._arquivosCarregados
-    
+        
     def _filtrar_arquivos_por_meses_ativos(self, arquivos):
         
         if not self._mesesAtivos:
@@ -168,12 +278,14 @@ class Backend(QObject):
         dfs = []
         for arq in arquivos:
             file_path = os.path.join(pasta, arq)
-            df = carregar_planilha(file_path)
+            df = carregar_planilha(file_path, self.mainwindow.gerenciador_pesos)  # <- AQUI: passando o gerenciador_pesos
+            df = Backend.filtrar_usuario_excluido(df)
             if "Usuário" in df.columns:
                 df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
             df = df.loc[:, ~df.columns.duplicated()]
             if not df.empty:
                 dfs.append(df)
+
         if not dfs:
             if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
                 self.mainwindow.kpis_qml.atualizar_kpis("--", "--", "--", "--")
@@ -275,7 +387,8 @@ class Backend(QObject):
         dfs = []
         for arq in arquivos:
             file_path = os.path.join(pasta, arq)
-            df = carregar_planilha(file_path)
+            df = carregar_planilha(file_path, self.mainwindow.gerenciador_pesos)  # <- AQUI: passando o gerenciador_pesos
+            df = Backend.filtrar_usuario_excluido(df)  
             if "Usuário" in df.columns:
                 df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
             df = df.loc[:, ~df.columns.duplicated()]
@@ -381,13 +494,20 @@ class Backend(QObject):
     @pyqtSlot(int, float)
     def atualizarPeso(self, index, novo_peso):
         if hasattr(self.mainwindow, "gerenciador_pesos"):
-            nome = self.nomes[index] if 0 <= index < len(self.nomes) else None
+            nome = self._nomes[index] if 0 <= index < len(self._nomes) else None
             if nome:
                 self.mainwindow.gerenciador_pesos.pesos[nome] = float(novo_peso)
                 self.mainwindow.gerenciador_pesos.salvar_pesos()
                 self._valores[index] = float(novo_peso)
                 self.valoresChanged.emit()
-    
+                
+                # Recarrega os gráficos e KPIs com os novos pesos
+                self.atualizar_grafico()
+                self.atualizar_kpis()
+                if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
+                    self.mainwindow.kpis_qml.kpisChanged.emit()
+
+
     @pyqtSlot()
     def salvarPesos(self):
 
@@ -434,16 +554,6 @@ class Backend(QObject):
             self._valores = [1.0] * len(tipos_atuais)
             self.tabelaPesosChanged.emit()
             self.valoresChanged.emit()
-
-    @pyqtSlot(int, float)
-    def atualizarPeso(self, index, novo_peso):
-        if hasattr(self.mainwindow, "gerenciador_pesos"):
-            nome = self._nomes[index] if 0 <= index < len(self._nomes) else None
-            if nome:
-                self.mainwindow.gerenciador_pesos.pesos[nome] = float(novo_peso)
-                self.mainwindow.gerenciador_pesos.salvar_pesos()
-                self._valores[index] = float(novo_peso)
-                self.valoresChanged.emit()
 
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
@@ -584,11 +694,13 @@ class MainWindow(QMainWindow):
         for arq in arquivos:
             file_path = os.path.join(pasta, arq)
             df = carregar_planilha(file_path, self.gerenciador_pesos)
+            df = Backend.filtrar_usuario_excluido(df)  # <-- AQUI
             if "Usuário" in df.columns:
                 df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
             df = df.loc[:, ~df.columns.duplicated()]
             if not df.empty:
                 dfs.append(df)
+
         self.df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 class GerenciadorPesosAgendamento:
@@ -638,29 +750,38 @@ if __name__ == "__main__":
 
         os.makedirs("dados_mensais", exist_ok=True)
 
+        # Inicializar objetos
         mainwindow = MainWindow()
         backend = Backend(mainwindow)
         kpis = KPIs()
+        
+        # Configurar referências
         mainwindow.kpis_qml = kpis
         mainwindow.backend_qml = backend
 
+        # Definir propriedades de contexto
         engine.rootContext().setContextProperty("mainwindow", mainwindow)
         engine.rootContext().setContextProperty("backend", backend)
         engine.rootContext().setContextProperty("kpis", kpis)
 
-        backend.atualizar_arquivos_carregados()        
+        # PRIMEIRO: Carregar arquivos e inicializar dados básicos
+        backend.atualizar_arquivos_carregados()
+        
+        # SEGUNDO: Carregar e preparar dados para todos os componentes
         backend.atualizar_grafico()
         backend.atualizar_kpis()
-
+        backend.gerarTabelaSemana()  # Gerar tabela de semana ANTES de carregar o QML
+        backend.atualizar_tabela_pesos()
+        
+        # TERCEIRO: Carregar interface QML
         qml_file = os.path.join(os.path.dirname(__file__), "MainWindow.qml")
         engine.load(qml_file)
  
         if not engine.rootObjects():
-            
+            print("Erro ao carregar QML")
             sys.exit(1)
 
         sys.exit(app.exec())
     except Exception as e:
-
         import traceback
         traceback.print_exc()
