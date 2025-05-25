@@ -59,34 +59,39 @@ if not app:
     app = QApplication(sys.argv)
 
 
-def carregar_planilha(file_path):
-    if file_path.lower().endswith(".xls"):
-        x2x = XLS2XLSX(file_path)
-        file_path = x2x.to_xlsx()
-
-    header = pd.read_excel(file_path, nrows=0)
-    if "peso" in header.columns:
-        df = pd.read_excel(file_path, usecols="A:H")
-    else:
-        df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
-        if "Agendamento" in df.columns:
-            tipo_limpo = df["Agendamento"].apply(
-                lambda x: re.sub(r"\s*\(.*?\)", "", str(x)).strip()
-            )
-            gerenciador_pesos = GerenciadorPesosAgendamento()
-            df["peso"] = tipo_limpo.apply(gerenciador_pesos.obter_peso)
+def carregar_planilha(self, file_path):
+    try:
+        if file_path.lower().endswith(".xls"):
+            x2x = XLS2XLSX(file_path)
+            file_path = x2x.to_xlsx()
+        header = pd.read_excel(file_path, nrows=0)
+        if "peso" in header.columns:
+            df = pd.read_excel(file_path, usecols="A:H")
+            print(f"Arquivo {os.path.basename(file_path)} já tem coluna peso")
         else:
-            df["peso"] = 1.0
-    # Padroniza nome do usuário
-    if "Usuário" in df.columns:
-        df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
-    # Remove colunas duplicadas
-    df = df.loc[:, ~df.columns.duplicated()]
-    # Garante nome correto da coluna
-    for col in df.columns:
-        if isinstance(col, str) and col.lower().startswith("usu") and col != "Usuário":
-            df.rename(columns={col: "Usuário"}, inplace=True)
-    return df
+            df = pd.read_excel(file_path, skiprows=1, usecols="A:G")
+            if "Agendamento" in df.columns:
+                # Use o mesmo método de normalização em todo o código
+                tipo_limpo = df["Agendamento"].apply(
+                    lambda x: re.sub(r'\s*(\(\d+\)|\d+)$', '', str(x)).strip()
+                )
+                df["peso"] = tipo_limpo.apply(self.gerenciador_pesos.obter_peso)
+                print(f"Aplicando pesos em {len(df)} linhas, média: {df['peso'].mean():.2f}")
+            else:
+                df["peso"] = 1.0
+                print(f"Sem coluna Agendamento, usando peso padrão 1.0")
+        if "Usuário" in df.columns:
+            df["Usuário"] = df["Usuário"].astype(str).str.strip().str.upper()
+        df = df.loc[:, ~df.columns.duplicated()]
+        for col in df.columns:
+            if isinstance(col, str) and col.lower().startswith("usu") and col != "Usuário":
+                df.rename(columns={col: "Usuário"}, inplace=True)
+        return df
+    except Exception as e:
+        print(f"Erro ao carregar planilha {file_path}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return pd.DataFrame()
 
 
 def formatar_valor(v):

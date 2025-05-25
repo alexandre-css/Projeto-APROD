@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
 import QtCharts
+import QtQuick.Controls.Material
 
 ApplicationWindow {
     width: 1440
@@ -127,19 +128,24 @@ ApplicationWindow {
                                     : currentPage === "pesos" ? pesosPage
                                     : currentPage === "config" ? configPage
                                     : dashboardPage
+                    
+                    
                     onLoaded: {
                         if (currentPage === "dashboard" && backend && backend.atualizar_grafico) {
+                            console.log("Chamando atualizar_grafico");
                             backend.atualizar_grafico()
                         }
                         if (currentPage === "pesos" && backend && backend.atualizar_tabela_pesos) {
+                            console.log("Chamando atualizar_tabela_pesos");
                             backend.atualizar_tabela_pesos()
                             pesosModel.clear()
                             for (var i = 0; i < backend.tabela_pesos.length; ++i) {
                                 pesosModel.append(backend.tabela_pesos[i])
                             }
                         }
-                        if (currentPage === "semana" && backend && backend.gerarTabelaSemana) {
-                            backend.gerarTabelaSemana()
+                        if (currentPage === "semana" && backend && typeof backend.gerarTabelaSemana === "function") {
+                            console.log("Página semana selecionada - atualizando dados");
+                            backend.gerarTabelaSemana();
                         }
                     }
                 }
@@ -627,9 +633,10 @@ ApplicationWindow {
                             animationDuration: 900
 
                             Component.onCompleted: {
-                                // Força atualização explícita das categorias após componente ser criado
-                                eixoUsuarios.categories = backend.nomes && backend.nomes.length > 0 ? backend.nomes : [" "]
-                                console.log("Nomes carregados:", JSON.stringify(backend.nomes))
+                                console.log("Forçando geração da tabela semana...");
+                                if (backend) {
+                                    backend.gerarTabelaSemana();
+                                }
                             }
 
                             HorizontalBarSeries {
@@ -835,29 +842,56 @@ ApplicationWindow {
                                                         }
                                                     }
 
-                                                    // CAMPO DE DIGITAÇÃO (largura fixa para "10.0")
+
+                                                    // CAMPO DE DIGITAÇÃO CORRIGIDO
                                                     TextField {
                                                         id: textField
-                                                        text: model.peso !== undefined ? Number(model.peso).toFixed(1) : ""
+                                                        property real valorAtual: model.peso !== undefined ? Number(model.peso) : 1.0
+                                                        
+                                                        text: valorAtual.toFixed(1)
                                                         Layout.preferredWidth: 70
                                                         height: 32
                                                         font.pixelSize: 16
                                                         horizontalAlignment: TextInput.AlignHCenter
                                                         verticalAlignment: TextInput.AlignVCenter
-                                                        validator: IntValidator { bottom: 1; top: 10 }
-                                                        inputMethodHints: Qt.ImhDigitsOnly
+                                                        validator: DoubleValidator { 
+                                                            bottom: 0.1; 
+                                                            top: 10.0;
+                                                            decimals: 1;
+                                                            notation: DoubleValidator.StandardNotation
+                                                        }
+                                                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                                                        
                                                         background: Rectangle {
                                                             radius: 6
                                                             border.color: "#3cb3e6"
                                                             border.width: 1
                                                             color: "#fff"
                                                         }
-                                                        onEditingFinished: {
-                                                            let value = parseInt(text)
-                                                            value = Math.min(10, Math.max(1, isNaN(value) ? 1 : value))
-                                                            text = value.toFixed(1)
-                                                            pesosModel.setProperty(index, "peso", value)
-                                                            backend.atualizarPeso(index, value)
+                                                        
+                                                        // SOLUÇÃO: Guardar o valor no foco e só atualizar se mudou
+                                                        property real valorNoFoco: 0.0
+                                                        
+                                                        onFocusChanged: {
+                                                            if (focus) {
+                                                                valorNoFoco = valorAtual
+                                                            } else {
+                                                                // Quando perde o foco, verifica se o valor realmente mudou
+                                                                let valorDigitado = parseFloat(text)
+                                                                if (isNaN(valorDigitado)) {
+                                                                    // Restaurar valor original se inválido
+                                                                    text = valorNoFoco.toFixed(1)
+                                                                } else {
+                                                                    valorDigitado = Math.min(10, Math.max(0.1, valorDigitado))
+                                                                    // Só atualiza se realmente houve mudança
+                                                                    if (Math.abs(valorDigitado - valorNoFoco) > 0.01) {
+                                                                        text = valorDigitado.toFixed(1)
+                                                                        pesosModel.setProperty(index, "peso", valorDigitado)
+                                                                        backend.atualizarPeso(index, valorDigitado)
+                                                                        valorAtual = valorDigitado
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
 
@@ -1024,7 +1058,7 @@ ApplicationWindow {
         }
     }
 
-    // Página semanaPage melhorada e otimizada
+        // Página semanaPage otimizada com alinhamentos, rolagem e ordenação
     Component {
         id: semanaPage
     
@@ -1032,6 +1066,10 @@ ApplicationWindow {
             color: "transparent"
             Layout.fillWidth: true
             Layout.fillHeight: true
+    
+            // Propriedades para ordenação
+            property bool sortAscending: true
+            property string sortColumn: "usuario"
     
             // Modelo de dados para o ranking
             ListModel {
@@ -1051,12 +1089,24 @@ ApplicationWindow {
                 }
             }
             
-            // Atualizar o modelo quando a página é carregada
+            // Função para ordenar a tabela
+            function sortTable(column) {
+                if (sortColumn === column) {
+                    sortAscending = !sortAscending;
+                } else {
+                    sortColumn = column;
+                    sortAscending = true;
+                }
+                
+                if (backend) {
+                    backend.ordenarTabelaSemana(sortColumn, sortAscending);
+                }
+            }
+            
             Component.onCompleted: {
                 updateRankingModel();
             }
             
-            // Conexão para atualizar quando os dados mudarem
             Connections {
                 target: backend
                 function onRankingSemanaChanged() {
@@ -1082,6 +1132,7 @@ ApplicationWindow {
     
                 // Container principal - usa mais espaço da tela
                 Rectangle {
+                    id: mainContainer
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.margins: 10
@@ -1104,18 +1155,20 @@ ApplicationWindow {
                     }
     
                     // Layout da tabela
-                    ColumnLayout {
+                    Column {
+                        id: tableLayout
                         anchors.fill: parent
-                        anchors.margins: 0
+                        anchors.bottomMargin: 100 // Espaço para o painel inferior
                         spacing: 0
                         visible: backend && backend.tabelaSemana && backend.tabelaSemana.length > 0
     
-                        // Cabeçalho da tabela
+                        // Cabeçalho da tabela fixo
                         Rectangle {
-                            Layout.fillWidth: true
+                            id: headerRect
+                            width: parent.width
                             height: 50
                             color: "#e3f2fd"
-                            z: 2 // Mantém o cabeçalho acima durante a rolagem
+                            z: 10 // Garantir que fique acima durante a rolagem
     
                             Row {
                                 anchors.fill: parent
@@ -1126,29 +1179,76 @@ ApplicationWindow {
                                     height: parent.height
                                     color: "transparent"
     
-                                    Text {
+                                    RowLayout {
                                         anchors.centerIn: parent
-                                        text: "Usuário"
-                                        font.pixelSize: 18
-                                        font.bold: true
-                                        color: "#1976d2"
+                                        spacing: 5
+    
+                                        Text {
+                                            text: "Usuário"
+                                            font.pixelSize: 18
+                                            font.bold: true
+                                            color: "#1976d2"
+                                        }
+                                        
+                                        // Ícone de ordenação
+                                        Text {
+                                            text: sortColumn === "usuario" ? (sortAscending ? "▲" : "▼") : ""
+                                            font.pixelSize: 14
+                                            color: "#3cb3e6"
+                                            font.bold: true
+                                        }
+                                    }
+                                    
+                                    // Área clicável para ordenação
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: sortTable("usuario")
                                     }
                                 }
     
                                 // Colunas para dias da semana
                                 Repeater {
-                                    model: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+                                    model: [
+                                        {name: "Segunda", key: "Segunda"},
+                                        {name: "Terça", key: "Terça"},
+                                        {name: "Quarta", key: "Quarta"},
+                                        {name: "Quinta", key: "Quinta"},
+                                        {name: "Sexta", key: "Sexta"},
+                                        {name: "Sábado", key: "Sábado"},
+                                        {name: "Domingo", key: "Domingo"}
+                                    ]
+                                    
                                     Rectangle {
                                         width: (parent.width - 220) / 7
                                         height: parent.height
                                         color: "transparent"
-    
-                                        Text {
+                                        
+                                        RowLayout {
                                             anchors.centerIn: parent
-                                            text: modelData
-                                            font.pixelSize: 16
-                                            font.bold: true
-                                            color: "#1976d2"
+                                            spacing: 5
+                                
+                                            Text {
+                                                text: modelData.name
+                                                font.pixelSize: 16
+                                                font.bold: true
+                                                color: "#1976d2"
+                                            }
+                                            
+                                            // Ícone de ordenação
+                                            Text {
+                                                text: sortColumn === modelData.key ? (sortAscending ? "▲" : "▼") : ""
+                                                font.pixelSize: 14
+                                                color: "#3cb3e6"
+                                                font.bold: true
+                                            }
+                                        }
+                                        
+                                        // Área clicável para ordenação
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: sortTable(modelData.key)
                                         }
                                     }
                                 }
@@ -1163,84 +1263,113 @@ ApplicationWindow {
                             }
                         }
     
-                        // Corpo da tabela com ScrollView - VERSÃO CORRIGIDA
+                        // ScrollView MELHORADO para os dados da tabela
                         ScrollView {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
+                            id: tableScrollView
+                            width: parent.width
+                            height: parent.height - headerRect.height
                             clip: true
-    
-                            Item {
-                                width: parent.width
-                                height: Math.max(tableContent.height, parent.height)
-    
-                                Column {
-                                    id: tableContent
-                                    width: parent.width
-    
-                                    Repeater {
-                                        model: backend && backend.tabelaSemana ? backend.tabelaSemana : []
-    
+                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                            contentWidth: width
+                        
+                            Column {
+                                id: tableContent
+                                width: tableScrollView.width
+                                spacing: 0
+                        
+                                Repeater {
+                                    model: backend && backend.tabelaSemana ? backend.tabelaSemana : []
+
+                                    Rectangle {
+                                        id: userRowItem
+                                        width: tableContent.width
+                                        height: 40
+                                        color: index % 2 === 0 ? "#f5faff" : "#ffffff" // Cores alternadas
+                                        
+                                        Component.onCompleted: {
+                                            console.log("userRowItem modelData:", JSON.stringify(modelData))
+                                        }
+                                        
+                                        // Efeito de hover como primeira camada
                                         Rectangle {
+                                            id: hoverHighlight
+                                            anchors.fill: parent
+                                            color: "#2196f3"
+                                            opacity: 0
+                                            Behavior on opacity { NumberAnimation { duration: 100 } }
+                                            z: 1
+                                        }
+                                        
+                                        // MouseArea FORA da Row, mas DENTRO do Rectangle pai
+                                        MouseArea {
+                                            id: rowHoverArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            z: 100
+                                            onEntered: hoverHighlight.opacity = 0.15
+                                            onExited: hoverHighlight.opacity = 0
+                                            propagateComposedEvents: false
+                                        }
+                                        
+                                        // Row principal com o conteúdo
+                                        Row {
+                                            z: 2
                                             width: parent.width
-                                            height: 40
-                                            color: index % 2 === 0 ? "#f5faff" : "#ffffff"
-    
-                                            Row {
-                                                width: parent.width
+                                            height: parent.height
+                                            
+                                            // Coluna Usuário
+                                            Rectangle {
+                                                width: 220
                                                 height: parent.height
-    
-                                                // Coluna Usuário
-                                                Rectangle {
-                                                    width: 220
-                                                    height: parent.height
-                                                    color: "transparent"
-    
-                                                    Text {
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        anchors.left: parent.left
-                                                        anchors.leftMargin: 16
-                                                        text: modelData.usuario
-                                                        font.pixelSize: 15
-                                                        font.bold: true
-                                                        color: "#232946"
-                                                        elide: Text.ElideRight
-                                                        width: 200
-                                                    }
+                                                color: "transparent"
+                                    
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    anchors.left: parent.left
+                                                    anchors.leftMargin: 16
+                                                    text: modelData.usuario
+                                                    font.pixelSize: 15
+                                                    font.bold: true
+                                                    color: "#232946"
+                                                    elide: Text.ElideRight
+                                                    width: 200
                                                 }
-    
-                                                // Colunas para valores dos dias da semana
-                                                Repeater {
-                                                    model: [modelData["Segunda-feira"], modelData["Terça-feira"], modelData["Quarta-feira"], modelData["Quinta-feira"], modelData["Sexta-feira"], modelData["Sábado"], modelData["Domingo"]]
-    
+                                            }
+
+                                            
+                                            Repeater {
+                                                model: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+                                                Rectangle {
+                                                    id: dayColumnDelegate
+                                                    width: (parent.width - 220) / 7
+                                                    height: 40
+                                                    color: "transparent"
+                                                    
                                                     Rectangle {
-                                                        width: (parent.width - 220) / 7
-                                                        height: 40
-                                                        color: "transparent"
-    
-                                                        Rectangle {
-                                                            anchors.centerIn: parent
-                                                            width: 70
-                                                            height: 28
-                                                            radius: 6
-                                                            visible: modelData > 0
-                                                            color: {
-                                                                // Cor baseada no valor
-                                                                if (modelData > 50)
-                                                                    return "#e3f2fd";
-                                                                if (modelData > 20)
-                                                                    return "#f5faff";
-                                                                return "transparent";
-                                                            }
-                                                            border.width: modelData > 0 ? 1 : 0
-                                                            border.color: modelData > 50 ? "#3cb3e6" : "#e0e0e0"
+                                                        anchors.centerIn: parent
+                                                        width: 70
+                                                        height: 28
+                                                        radius: 6
+                                                        
+                                                        property var itemData: parent.parent.parent.parent.modelData
+                                                        property string currentDay: dayColumnDelegate.modelData
+                                                        
+                                                        property real dayValue: {
+                                                            if (!itemData) return 0.0;
+                                                            return Number(itemData[currentDay] || 0)
                                                         }
-    
+                                                        
+                                                        color: dayValue > 50 ? "#a3d4ff" : dayValue > 20 ? "#d9eaf7" : "#f7f7f7"
+                                                        border.width: 1
+                                                        border.color: dayValue > 50 ? "#1976d2" : dayValue > 20 ? "#a0c8e4" : "#e0e0e0"
+                                                        
                                                         Text {
                                                             anchors.centerIn: parent
-                                                            text: modelData !== undefined ? modelData.toFixed(1) : "0.0"
+                                                            text: parent.dayValue.toFixed(1)
                                                             font.pixelSize: 15
-                                                            color: modelData > 0 ? "#232946" : "#9e9e9e"
-                                                            font.bold: modelData > 50
+                                                            color: parent.dayValue > 0 ? "#232946" : "#9e9e9e"
+                                                            font.bold: parent.dayValue > 50
                                                         }
                                                     }
                                                 }
@@ -1249,21 +1378,55 @@ ApplicationWindow {
                                     }
                                 }
                             }
+
+                            // Barra de rolagem personalizada com tom azul
+                            ScrollBar {
+                                id: vScrollBar
+                                orientation: Qt.Vertical
+                                size: 0.3
+                                position: 0.2
+                                active: true
+                                parent: tableScrollView
+                                anchors.top: tableScrollView.top
+                                anchors.right: tableScrollView.right
+                                anchors.bottom: tableScrollView.bottom
+                                policy: ScrollBar.AsNeeded
+                                visible: tableScrollView.contentHeight > tableScrollView.height
+                                width: 12
+                                
+                                contentItem: Rectangle {
+                                    implicitWidth: 12
+                                    radius: 6
+                                    color: vScrollBar.pressed ? "#1976d2" : vScrollBar.hovered ? "#3cb3e6" : "#98cdf0"
+                                }
+                                
+                                background: Rectangle {
+                                    implicitWidth: 12
+                                    radius: 6
+                                    color: "#e3f2fd"
+                                }
+                            }
                         }
+                    }
     
-                        // Container inferior para ranking e botão - VERSÃO CORRIGIDA
+                    // Container inferior para ranking e botão
+                    Rectangle {
+                        id: bottomPanel
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 100
+                        color: "transparent"
+    
                         RowLayout {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 80  // Altura reduzida
-                            Layout.bottomMargin: 10
+                            anchors.fill: parent
+                            anchors.margins: 10
                             spacing: 20
-                            Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: Math.min(parent.width - 40, 1200)
     
                             // Painel de Ranking - visual otimizado
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 80  // Altura reduzida
+                                Layout.preferredHeight: 80
                                 radius: 12
                                 color: "#f5faff"
                                 border.color: "#3cb3e6"
@@ -1283,8 +1446,9 @@ ApplicationWindow {
                                     }
                                 }
     
-                                // Mostrar rankings em linha única em vez de grid
-                                Row {
+                                // ScrollView horizontal para o ranking
+                                ScrollView {
+                                    id: rankingScroll
                                     anchors {
                                         top: rankingTitle.bottom
                                         topMargin: 4
@@ -1295,28 +1459,62 @@ ApplicationWindow {
                                         leftMargin: 16
                                         rightMargin: 16
                                     }
-                                    spacing: 8
+                                    clip: true
+                                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                                    ScrollBar.vertical.policy: ScrollBar.AlwaysOff
     
-                                    // Repeater usando o modelo do ListModel
-                                    Repeater {
-                                        model: rankingModel
+                                    ScrollBar {
+                                        id: hScrollBar
+                                        orientation: Qt.Horizontal
+                                        size: 0.3
+                                        position: 0.0
+                                        active: true
+                                        policy: ScrollBar.AsNeeded
+                                        parent: rankingScroll
+                                        anchors.left: rankingScroll.left
+                                        anchors.right: rankingScroll.right
+                                        anchors.bottom: rankingScroll.bottom
+                                        height: 8
+                                        visible: rankingRow.width > rankingScroll.width
+                                        
+                                        contentItem: Rectangle {
+                                            implicitHeight: 8
+                                            radius: 4
+                                            color: hScrollBar.pressed ? "#1976d2" : hScrollBar.hovered ? "#3cb3e6" : "#98cdf0"
+                                        }
     
-                                        Text {
-                                            text: model.rankText  // Use model.rankText em vez de modelData
-                                            font.pixelSize: 14
-                                            color: "#232946"
-                                            font.bold: index < 3 // Destaque para os 3 primeiros dias
+                                        background: Rectangle {
+                                            implicitHeight: 8
+                                            radius: 4
+                                            color: "#e3f2fd"
+                                        }
+                                    }
+                                    
+                                    Row {
+                                        id: rankingRow
+                                        spacing: 16
+                                        anchors.verticalCenter: parent.verticalCenter
     
-                                            // Adicionar separador visual entre os itens
+                                        // Repeater usando o modelo do ListModel
+                                        Repeater {
+                                            model: rankingModel
+    
                                             Rectangle {
-                                                visible: index > 0
-                                                width: 1
-                                                height: parent.height * 0.8
-                                                color: "#e0e0e0"
-                                                anchors {
-                                                    left: parent.left
-                                                    leftMargin: -4
-                                                    verticalCenter: parent.verticalCenter
+                                                height: 40
+                                                width: rankItemText.width + 20
+                                                color: index < 3 ? "#e3f2fd" : "transparent"
+                                                radius: 8
+                                                border.width: 1
+                                                border.color: index < 3 ? "#3cb3e6" : "#e0e0e0"
+                                                
+                                                Text {
+                                                    id: rankItemText
+                                                    anchors.centerIn: parent
+                                                    text: model.rankText
+                                                    font.pixelSize: 14
+                                                    color: "#232946"
+                                                    font.bold: index < 3
+                                                    padding: 5
                                                 }
                                             }
                                         }
@@ -1324,50 +1522,55 @@ ApplicationWindow {
                                 }
                             }
     
-                            // Botão Atualizar Dados
+                            // Botão Atualizar Dados - corrigido usando o mesmo padrão dos outros botões
                             Rectangle {
                                 Layout.preferredWidth: 180
                                 Layout.preferredHeight: 50
                                 radius: 12
                                 gradient: Gradient {
-                                    GradientStop {
-                                        position: 0.0
-                                        color: "#3cb3e6"
-                                    }
-                                    GradientStop {
-                                        position: 1.0
-                                        color: "#1976d2"
-                                    }
+                                    GradientStop { position: 0.0; color: "#3cb3e6" }
+                                    GradientStop { position: 1.0; color: "#1976d2" }
                                 }
-    
+                                
+                                // Adicionar efeito de hover
+                                property bool hovered: false
+                                scale: hovered ? 1.03 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 120 } }
+                            
                                 MouseArea {
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
+                                    onEntered: parent.hovered = true
+                                    onExited: parent.hovered = false
                                     onClicked: {
                                         if (backend) {
                                             console.log("Gerando tabela da semana...");
                                             backend.gerarTabelaSemana();
-                                            updateRankingModel(); // Atualiza o modelo após gerar tabela
+                                            updateRankingModel();
                                         }
                                     }
                                 }
-    
+                            
+                                // Use RowLayout como nos outros botões
                                 RowLayout {
                                     anchors.centerIn: parent
                                     spacing: 8
-    
+                            
                                     Image {
-                                        source: "assets/icons/table.png"
+                                        source: "assets/icons/peso4.png"
                                         Layout.preferredWidth: 24
                                         Layout.preferredHeight: 24
                                         fillMode: Image.PreserveAspectFit
+                                        Layout.alignment: Qt.AlignVCenter
                                     }
-    
+
                                     Text {
                                         text: "Atualizar Dados"
                                         color: "#fff"
                                         font.bold: true
                                         font.pixelSize: 15
+                                        verticalAlignment: Text.AlignVCenter
                                     }
                                 }
                             }
