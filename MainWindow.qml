@@ -1288,20 +1288,33 @@ ApplicationWindow {
                             width: parent.width
                             height: 50
                             color: "#e3f2fd"
+                            radius: 16
+                            border.width: 2
+                            border.color: "#3cb3e6"
                             z: 10
-    
+                        
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                height: parent.radius
+                                color: parent.color
+                            }
+                        
                             Row {
                                 anchors.fill: parent
-    
+                        
                                 Rectangle {
                                     width: 220
                                     height: parent.height
                                     color: "transparent"
-    
+                                    border.width: 1
+                                    border.color: "#3cb3e6"
+                        
                                     RowLayout {
                                         anchors.centerIn: parent
                                         spacing: 5
-    
+                        
                                         Text {
                                             text: "Usuário"
                                             font.pixelSize: 18
@@ -1323,7 +1336,7 @@ ApplicationWindow {
                                         onClicked: sortTable("usuario")
                                     }
                                 }
-    
+                        
                                 Repeater {
                                     model: [
                                         {name: "Segunda", key: "segunda"},
@@ -1334,11 +1347,13 @@ ApplicationWindow {
                                         {name: "Sábado", key: "sabado"},
                                         {name: "Domingo", key: "domingo"}
                                     ]
-
+                        
                                     Rectangle {
-                                        width: (parent.width - 220 - 120) / 7
+                                        width: (headerRect.width - 220 - 120) / 7
                                         height: parent.height
                                         color: "transparent"
+                                        border.width: 1
+                                        border.color: "#3cb3e6"
                                         
                                         RowLayout {
                                             anchors.centerIn: parent
@@ -1367,7 +1382,6 @@ ApplicationWindow {
                                     }
                                 }
                                 
-                                // Coluna Total
                                 Rectangle {
                                     width: 120
                                     height: parent.height
@@ -1399,6 +1413,7 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                        }
     
                             Rectangle {
                                 anchors.bottom: parent.bottom
@@ -1439,37 +1454,35 @@ ApplicationWindow {
                                         width: tableContent.width
                                         height: 40
                                         color: index % 2 === 0 ? "#f5faff" : "#ffffff"
-
+                                        border.width: 1
+                                        border.color: "#e3f2fd"
+                                        
                                         property var itemData: modelData
                         
                                         property real rowTotal: {
                                             if (!itemData) {
                                                 return 0.0;
                                             }
+                                            var total = 0.0;
                                             var dias = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"];
                                             for (var i = 0; i < dias.length; i++) {
                                                 var valor = itemData[dias[i]];
                                                 if (valor !== undefined && valor !== null) {
                                                     total += Number(valor);
-                                                } else {
-                                                    console.log("Linha " + index + " dia " + dias[i] + ": valor é " + valor);
                                                 }
-                                            }
-                                            if (index < 3) {
-                                                console.log("Linha " + index + " total calculado: " + total);
                                             }
                                             return total;
                                         }
                         
                                         Row {
-                                            width: parent.width
-                                            height: parent.height
-                                            
+                                            anchors.fill: parent
+                        
                                             Rectangle {
                                                 width: 220
                                                 height: parent.height
                                                 color: "transparent"
-                                        
+                                                border.color: "#e3f2fd"
+                                                
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     anchors.left: parent.left
@@ -1490,12 +1503,11 @@ ApplicationWindow {
                                                     width: (userRowItem.width - 220 - 120) / 7
                                                     height: 40
                                                     color: "transparent"
+                                                    border.width: 1
+                                                    border.color: "#e3f2fd"
                                                     
-                                                    Rectangle {
+                                                    Text {
                                                         anchors.centerIn: parent
-                                                        width: 70
-                                                        height: 28
-                                                        radius: 6
                                                         property var userData: userRowItem.itemData
                                                         property string dayKey: modelData
                                                         property real dayValue: {
@@ -1505,17 +1517,10 @@ ApplicationWindow {
                                                             var val = userData[dayKey];
                                                             return (val !== undefined && val !== null) ? Number(val) : 0.0;
                                                         }
-                                                        color: dayValue > 50 ? "#a3d4ff" : dayValue > 20 ? "#d9eaf7" : "#f7f7f7"
-                                                        border.width: 1
-                                                        border.color: dayValue > 50 ? "#1976d2" : dayValue > 20 ? "#a0c8e4" : "#e0e0e0"
-                                                        
-                                                        Text {
-                                                            anchors.centerIn: parent
-                                                            text: parent.dayValue.toFixed(1)
-                                                            font.pixelSize: 15
-                                                            color: parent.dayValue > 0 ? "#232946" : "#9e9e9e"
-                                                            font.bold: parent.dayValue > 50
-                                                        }
+                                                        text: dayValue.toFixed(1)
+                                                        font.pixelSize: 15
+                                                        color: "#232946"
+                                                        font.bold: dayValue > 50
                                                     }
                                                 }
                                             }
@@ -1525,22 +1530,12 @@ ApplicationWindow {
                                                 height: 40
                                                 color: "transparent"
                                                 
-                                                Rectangle {
+                                                Text {
                                                     anchors.centerIn: parent
-                                                    width: 90
-                                                    height: 30
-                                                    radius: 6
-                                                    color: userRowItem.rowTotal > 200 ? "#e1f5fe" : "#f5f5f5"
-                                                    border.width: 1
-                                                    border.color: userRowItem.rowTotal > 200 ? "#03a9f4" : "#e0e0e0"
-                                                    
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: userRowItem.rowTotal.toFixed(1)
-                                                        font.pixelSize: 15
-                                                        font.bold: userRowItem.rowTotal > 200
-                                                        color: userRowItem.rowTotal > 0 ? "#232946" : "#9e9e9e"
-                                                    }
+                                                    text: userRowItem.rowTotal.toFixed(1)
+                                                    font.pixelSize: 15
+                                                    font.bold: userRowItem.rowTotal > 200
+                                                    color: "#232946"
                                                 }
                                             }
                                         }
@@ -1661,7 +1656,6 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                            }
     
                             Rectangle {
                                 Layout.preferredWidth: 180
