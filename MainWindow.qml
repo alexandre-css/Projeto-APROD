@@ -606,14 +606,11 @@ ApplicationWindow {
                         sourceComponent: chartComponent
                         property bool updateTrigger: false
 
+
                         Connections {
                             target: backend
                             function onValoresChanged() {
-                                chartLoader.updateTrigger = !chartLoader.updateTrigger
-                                chartLoader.active = false
-                                chartLoader.active = true
-                            }
-                            function onNomesChanged() {
+                                // Usar uma abordagem mais simples sem animação na inicialização
                                 chartLoader.updateTrigger = !chartLoader.updateTrigger
                                 chartLoader.active = false
                                 chartLoader.active = true
@@ -1086,16 +1083,16 @@ ApplicationWindow {
             }
             
             function updateRankingModel() {
-    rankingModel.clear();
-    if (backend && backend.rankingSemana) {
-        var lines = backend.rankingSemana.split('\n');
-        for (var i = 0; i < lines.length; i++) {
-            if (lines[i].trim().length > 0) {
-                rankingModel.append({"rankText": lines[i]});
+                rankingModel.clear();
+                if (backend && backend.rankingSemana) {
+                    var lines = backend.rankingSemana.split('\n');
+                    for (var i = 0; i < lines.length; i++) {
+                        if (lines[i].trim().length > 0) {
+                            rankingModel.append({"rankText": lines[i]});
+                        }
+                    }
+                }
             }
-        }
-    }
-}
 
             function sortTable(column) {
                 if (sortColumn === column) {
@@ -1129,6 +1126,9 @@ ApplicationWindow {
                 target: backend
                 function onRankingSemanaChanged() {
                     updateRankingModel();
+                }
+                function onTabelaSemanaChanged() {
+                    console.log("Tabela semana atualizada");
                 }
             }
     
@@ -1326,15 +1326,15 @@ ApplicationWindow {
     
                                 Repeater {
                                     model: [
-                                        {name: "Segunda", key: "Segunda"},
-                                        {name: "Terça", key: "Terça"},
-                                        {name: "Quarta", key: "Quarta"},
-                                        {name: "Quinta", key: "Quinta"},
-                                        {name: "Sexta", key: "Sexta"},
-                                        {name: "Sábado", key: "Sábado"},
-                                        {name: "Domingo", key: "Domingo"}
+                                        {name: "Segunda", key: "segunda"},
+                                        {name: "Terça", key: "terca"},
+                                        {name: "Quarta", key: "quarta"},
+                                        {name: "Quinta", key: "quinta"},
+                                        {name: "Sexta", key: "sexta"},
+                                        {name: "Sábado", key: "sabado"},
+                                        {name: "Domingo", key: "domingo"}
                                     ]
-                                    
+
                                     Rectangle {
                                         width: (parent.width - 220 - 120) / 7
                                         height: parent.height
@@ -1408,30 +1408,29 @@ ApplicationWindow {
                             }
                         }
     
-                        ScrollView {
+                        Flickable {
                             id: tableScrollView
                             width: parent.width
                             height: parent.height - headerRect.height
+                            contentHeight: tableContent.height
                             clip: true
-                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
-                            contentWidth: width
-                        
+                            
                             Column {
                                 id: tableContent
                                 width: tableScrollView.width
                                 spacing: 0
-
-                                 Component.onCompleted: {
+                        
+                                Component.onCompleted: {
                                     if (backend && backend.tabelaSemana && backend.tabelaSemana.length > 0) {
                                         console.log("Dados da tabela disponíveis: " + backend.tabelaSemana.length + " linhas");
-                                        console.log("Primeira linha: " + JSON.stringify(backend.tabelaSemana[0]));
+                                        for (var i = 0; i < Math.min(3, backend.tabelaSemana.length); i++) {
+                                            console.log("Linha " + i + ": " + JSON.stringify(backend.tabelaSemana[i]));
+                                        }
                                     } else {
-                                        console.log("Sem dados na tabela");
+                                        console.log("Sem dados na tabela ou backend não conectado");
                                     }
                                 }
-
-
+                        
                                 Repeater {
                                     model: backend && backend.tabelaSemana ? backend.tabelaSemana : []
                                     
@@ -1441,49 +1440,31 @@ ApplicationWindow {
                                         height: 40
                                         color: index % 2 === 0 ? "#f5faff" : "#ffffff"
 
-                                        // Diagnóstico adicional, remova após resolver
-                                        Component.onCompleted: {
-                                            console.log("Criando linha para usuário: " + modelData.usuario);
-                                            console.log("Dados do dia segunda: " + modelData.segunda);
-                                        }
-
-                                        // Cálculo do total da linha
+                                        property var itemData: modelData
+                        
                                         property real rowTotal: {
-                                            if (!modelData) return 0.0;
-                                            return Number(modelData.segunda || 0) +
-                                                   Number(modelData.terca || 0) +
-                                                   Number(modelData.quarta || 0) +
-                                                   Number(modelData.quinta || 0) +
-                                                   Number(modelData.sexta || 0) +
-                                                   Number(modelData.sabado || 0) +
-                                                   Number(modelData.domingo || 0);
+                                            if (!itemData) {
+                                                return 0.0;
+                                            }
+                                            var dias = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"];
+                                            for (var i = 0; i < dias.length; i++) {
+                                                var valor = itemData[dias[i]];
+                                                if (valor !== undefined && valor !== null) {
+                                                    total += Number(valor);
+                                                } else {
+                                                    console.log("Linha " + index + " dia " + dias[i] + ": valor é " + valor);
+                                                }
+                                            }
+                                            if (index < 3) {
+                                                console.log("Linha " + index + " total calculado: " + total);
+                                            }
+                                            return total;
                                         }
-
-                                        Rectangle {
-                                            id: hoverHighlight
-                                            anchors.fill: parent
-                                            color: "#2196f3"
-                                            opacity: 0
-                                            Behavior on opacity { NumberAnimation { duration: 100 } }
-                                            z: 1
-                                        }
-
-                                        MouseArea {
-                                            id: rowHoverArea
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            z: 100
-                                            onEntered: hoverHighlight.opacity = 0.15
-                                            onExited: hoverHighlight.opacity = 0
-                                            propagateComposedEvents: false
-                                        }
-
+                        
                                         Row {
-                                            z: 2
                                             width: parent.width
                                             height: parent.height
                                             
-                                            // Coluna do usuário
                                             Rectangle {
                                                 width: 220
                                                 height: parent.height
@@ -1493,7 +1474,7 @@ ApplicationWindow {
                                                     anchors.verticalCenter: parent.verticalCenter
                                                     anchors.left: parent.left
                                                     anchors.leftMargin: 16
-                                                    text: modelData ? modelData.usuario : ""
+                                                    text: itemData ? itemData.usuario : ""
                                                     font.pixelSize: 15
                                                     font.bold: true
                                                     color: "#232946"
@@ -1501,16 +1482,13 @@ ApplicationWindow {
                                                     width: 200
                                                 }
                                             }
-                                
-                                            // Colunas dos dias da semana
+                        
                                             Repeater {
-                                                id: dayColumnRepeater
                                                 model: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
                                                 
                                                 Rectangle {
-                                                    id: dayColumnDelegate
                                                     width: (userRowItem.width - 220 - 120) / 7
-                                                    height: parent.height
+                                                    height: 40
                                                     color: "transparent"
                                                     
                                                     Rectangle {
@@ -1518,14 +1496,15 @@ ApplicationWindow {
                                                         width: 70
                                                         height: 28
                                                         radius: 6
-                                                        
+                                                        property var userData: userRowItem.itemData
                                                         property string dayKey: modelData
                                                         property real dayValue: {
-                                                            if (!userRowItem.modelData) return 0.0;
-                                                            var val = Number(userRowItem.modelData[dayKey]);
-                                                            return isNaN(val) ? 0.0 : val;
+                                                            if (!userData) {
+                                                                return 0.0;
+                                                            }
+                                                            var val = userData[dayKey];
+                                                            return (val !== undefined && val !== null) ? Number(val) : 0.0;
                                                         }
-                                                        
                                                         color: dayValue > 50 ? "#a3d4ff" : dayValue > 20 ? "#d9eaf7" : "#f7f7f7"
                                                         border.width: 1
                                                         border.color: dayValue > 50 ? "#1976d2" : dayValue > 20 ? "#a0c8e4" : "#e0e0e0"
@@ -1540,8 +1519,7 @@ ApplicationWindow {
                                                     }
                                                 }
                                             }
-
-                                            // Coluna de Total
+                                            
                                             Rectangle {
                                                 width: 120
                                                 height: 40
@@ -1569,31 +1547,13 @@ ApplicationWindow {
                                     }
                                 }
                             }
-    
-                            ScrollBar {
-                                id: vScrollBar
-                                orientation: Qt.Vertical
-                                size: 0.3
-                                position: 0.2
-                                active: true
-                                parent: tableScrollView
-                                anchors.top: tableScrollView.top
-                                anchors.right: tableScrollView.right
-                                anchors.bottom: tableScrollView.bottom
-                                policy: ScrollBar.AsNeeded
-                                visible: tableScrollView.contentHeight > tableScrollView.height
+                        
+                            ScrollBar.vertical: ScrollBar {
                                 width: 12
-                                
+                                policy: ScrollBar.AlwaysOn
                                 contentItem: Rectangle {
-                                    implicitWidth: 12
                                     radius: 6
-                                    color: vScrollBar.pressed ? "#1976d2" : vScrollBar.hovered ? "#3cb3e6" : "#98cdf0"
-                                }
-                                
-                                background: Rectangle {
-                                    implicitWidth: 12
-                                    radius: 6
-                                    color: "#e3f2fd"
+                                    color: "#3cb3e6"
                                 }
                             }
                         }
@@ -1648,7 +1608,7 @@ ApplicationWindow {
                                     clip: true
                                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                                     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-    
+
                                     ScrollBar {
                                         id: hScrollBar
                                         orientation: Qt.Horizontal
@@ -1656,10 +1616,6 @@ ApplicationWindow {
                                         position: 0.0
                                         active: true
                                         policy: ScrollBar.AsNeeded
-                                        parent: rankingScroll
-                                        anchors.left: rankingScroll.left
-                                        anchors.right: rankingScroll.right
-                                        anchors.bottom: rankingScroll.bottom
                                         height: 8
                                         visible: rankingRow.width > rankingScroll.width
                                         
@@ -1668,7 +1624,7 @@ ApplicationWindow {
                                             radius: 4
                                             color: hScrollBar.pressed ? "#1976d2" : hScrollBar.hovered ? "#3cb3e6" : "#98cdf0"
                                         }
-    
+                                        
                                         background: Rectangle {
                                             implicitHeight: 8
                                             radius: 4
@@ -1761,5 +1717,5 @@ ApplicationWindow {
                 }
             }
         }
-     }
+    }
 }
