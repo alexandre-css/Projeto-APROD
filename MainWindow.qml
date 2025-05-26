@@ -1065,15 +1065,14 @@ ApplicationWindow {
         }
     }
 
-        // Página semanaPage otimizada com alinhamentos, rolagem e ordenação
-        Component {
+    Component {
         id: semanaPage
     
         Rectangle {
             color: "transparent"
             Layout.fillWidth: true
             Layout.fillHeight: true
-
+    
             property bool sortAscending: true
             property string sortColumn: "usuario"
             property string filtroUsuario: ""
@@ -1093,7 +1092,7 @@ ApplicationWindow {
                     }
                 }
             }
-
+    
             function sortTable(column) {
                 if (sortColumn === column) {
                     sortAscending = !sortAscending;
@@ -1106,14 +1105,13 @@ ApplicationWindow {
                     backend.ordenarTabelaSemana(sortColumn, sortAscending);
                 }
             }
-
+    
             function exportarParaCSV() {
                 if (backend && backend.tabelaSemana && backend.tabelaSemana.length > 0) {
                     backend.exportarTabelaSemanaCSV();
                 }
             }
-
-            // Unificar os dois Component.onCompleted em um só
+    
             Component.onCompleted: {
                 console.log("Inicializando página da semana")
                 updateRankingModel();
@@ -1121,7 +1119,7 @@ ApplicationWindow {
                     backend.gerarTabelaSemana()
                 }
             }
-
+    
             Connections {
                 target: backend
                 function onRankingSemanaChanged() {
@@ -1148,7 +1146,6 @@ ApplicationWindow {
                     Layout.bottomMargin: 4
                 }
                 
-                // Nova barra de controle para filtro e exportação
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 60
@@ -1413,7 +1410,6 @@ ApplicationWindow {
                                     }
                                 }
                             }
-                        }
     
                             Rectangle {
                                 anchors.bottom: parent.bottom
@@ -1454,9 +1450,19 @@ ApplicationWindow {
                                         width: tableContent.width
                                         height: 40
                                         color: index % 2 === 0 ? "#f5faff" : "#ffffff"
+                                        radius: index === backend.tabelaSemana.length - 1 ? 16 : 0
                                         border.width: 1
                                         border.color: "#e3f2fd"
                                         
+                                        Rectangle {
+                                            anchors.top: parent.top
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            height: parent.radius
+                                            color: parent.color
+                                            visible: parent.radius > 0
+                                        }
+    
                                         property var itemData: modelData
                         
                                         property real rowTotal: {
@@ -1603,9 +1609,9 @@ ApplicationWindow {
                                     clip: true
                                     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                                     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-
+    
                                     ScrollBar {
-                                        id: hScrollBar
+                                        id: hScrollBarSemana
                                         orientation: Qt.Horizontal
                                         size: 0.3
                                         position: 0.0
@@ -1617,7 +1623,7 @@ ApplicationWindow {
                                         contentItem: Rectangle {
                                             implicitHeight: 8
                                             radius: 4
-                                            color: hScrollBar.pressed ? "#1976d2" : hScrollBar.hovered ? "#3cb3e6" : "#98cdf0"
+                                            color: hScrollBarSemana.pressed ? "#1976d2" : hScrollBarSemana.hovered ? "#3cb3e6" : "#98cdf0"
                                         }
                                         
                                         background: Rectangle {
@@ -1656,6 +1662,7 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                            }
     
                             Rectangle {
                                 Layout.preferredWidth: 180
@@ -1684,7 +1691,7 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                            
+                                
                                 RowLayout {
                                     anchors.centerIn: parent
                                     spacing: 8
@@ -1712,4 +1719,30 @@ ApplicationWindow {
             }
         }
     }
-}
+    
+        Component {
+            id: compararPage
+            Rectangle {
+                color: "white"
+                Text {
+                    text: "Página Comparar"
+                    anchors.centerIn: parent
+                    font.pixelSize: 24
+                    color: "black"
+                }
+            }
+        }
+    
+        Component {
+            id: configPage
+            Rectangle {
+                color: "white"
+                Text {
+                    text: "Página de Configurações"
+                    anchors.centerIn: parent
+                    font.pixelSize: 24
+                    color: "black"
+                }
+            }
+        }
+    }
