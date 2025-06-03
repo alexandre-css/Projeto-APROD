@@ -47,7 +47,10 @@ class Backend(QObject):
     exportSuccessSignal = pyqtSignal()
     opacityUpdateRequired = pyqtSignal(str, float)
     mesStatusUpdateRequired = pyqtSignal(str, bool)
-
+    usuariosComparacaoChanged = pyqtSignal()
+    comparacaoDataChanged = pyqtSignal()
+    maxComparacaoValueChanged = pyqtSignal()
+    
     def __init__(self, mainwindow):
         super().__init__()
         self.mainwindow = mainwindow
@@ -63,6 +66,9 @@ class Backend(QObject):
         self._rankingData = []
         self._currentPage = "dashboard"
         self._filtroUsuario = ""
+        self._usuariosComparacao = []
+        self._dadosComparacao = []
+        self._filtroUsuariosComparacao = ""
 
     def conectar_sinais_ui(self):
         self.sortColumnChanged.connect(lambda col: print(f"Coluna ordenação mudou: {col}"))
@@ -493,6 +499,8 @@ class Backend(QObject):
             elif page == "semana":
                 self.gerarTabelaSemana()
                 self.atualizar_ranking_model()
+            elif page == "comparar":
+                self.gerarDadosComparacao()
             elif page == "pesos":
                 self.atualizar_tabela_pesos()
                 self.popular_pesos_model()
@@ -848,29 +856,18 @@ class Backend(QObject):
 
     @pyqtSlot(str)
     def toggleMesAtivo(self, mes):
-        QApplication.processEvents()
-        
         if mes in self._mesesAtivos:
             self._mesesAtivos.remove(mes)
         else:
             self._mesesAtivos.append(mes)
         
         self.mesesAtivosChanged.emit()
-        print(f"Atualizando dados após toggle de {mes}, meses ativos: {self._mesesAtivos}")
-        
-        # IMPORTANTE: Primeiro notificar mudanças dos valores para QML reconfigurar o gráfico
-        self.valoresChanged.emit()
-        self.nomesChanged.emit()
-        
-        # Depois atualizar os dados em ordem específica
-        QApplication.processEvents()  # Garante processamento dos sinais antes de continuar
         self.atualizar_kpis()
-        QApplication.processEvents()  # Pequena pausa para processamento
-        self.atualizar_tabela_pesos()
-        QApplication.processEvents()  # Pequena pausa para processamento
-        self.atualizar_grafico()  # Deixa o gráfico por último
         
-        # Notificar os KPIs após todos os dados estarem prontos
+        QApplication.processEvents()
+        
+        self.atualizar_grafico()
+        
         if hasattr(self.mainwindow, "kpis_qml") and self.mainwindow.kpis_qml is not None:
             self.mainwindow.kpis_qml.kpisChanged.emit()
 
@@ -1023,10 +1020,18 @@ class Backend(QObject):
     @pyqtSlot()
     def importar_arquivo_excel(self):
         self.mainwindow.importar_arquivo_excel()
+        QApplication.processEvents()
         self.atualizar_arquivos_carregados()
-        self.atualizar_kpis()
-        self.atualizar_grafico()
+        QApplication.processEvents()
         self.atualizar_tabela_pesos()
+        QApplication.processEvents()
+        self.atualizar_grafico()
+        QApplication.processEvents()
+        self.atualizar_kpis()
+        self.nomesChanged.emit()
+        self.valoresChanged.emit()
+        QApplication.processEvents()
+        self.force_chart_update()
 
     @pyqtSlot(str, result=bool)
     def mes_ativo_status(self, mes):
@@ -1304,6 +1309,176 @@ class Backend(QObject):
             print(f"❌ ERRO NO TESTE: {str(e)}")
             traceback.print_exc()
 
+    @pyqtSlot()
+    def gerarDadosComparacao(self):
+        try:
+            pasta = "dados_mensais"
+            arquivos = [arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")] if os.path.exists(pasta) else []
+            arquivos = self._filtrar_arquivos_por_meses_ativos(arquivos)
+            
+            if not arquivos:
+                self._usuariosComparacao = []
+                self._dadosComparacao = []
+                self.usuariosComparacaoChanged.emit()
+                self.comparacaoDataChanged.emit()
+                return
+            
+            dfs = []
+            for arq in arquivos:
+                file_path = os.path.join(pasta, arq)
+                df = self.mainwindow.carregar_planilha(file_path)
+                if not df.empty:
+                    dfs.append(df)
+            
+            if not dfs:
+                return
+            
+            df_total = pd.concat(dfs, ignore_index=True)
+            
+            if "Usuário" in df_total.columns and "Data criação" in df_total.columns:
+                df_total["Data criação"] = pd.to_datetime(df_total["Data criação"], errors='coerce', dayfirst=True)
+                df_total["DiaSemana"] = df_total["Data criação"].dt.day_name()
+                
+                mapeamento_dias = {
+                    'Monday': 'segunda', 'Tuesday': 'terca', 'Wednesday': 'quarta',
+                    'Thursday': 'quinta', 'Friday': 'sexta', 'Saturday': 'sabado', 'Sunday': 'domingo'
+                }
+                df_total["DiaSemana"] = df_total["DiaSemana"].map(mapeamento_dias)
+                
+                usuarios_dados = {}
+                for _, row in df_total.iterrows():
+                    usuario = row["Usuário"]
+                    dia = row["DiaSemana"]
+                    peso = float(row["peso"]) if pd.notna(row["peso"]) else 1.0
+                    
+                    if pd.isna(usuario) or usuario == "":
+                        continue
+                    
+                    if usuario not in usuarios_dados:
+                        usuarios_dados[usuario] = {
+                            'segunda': 0, 'terca': 0, 'quarta': 0, 'quinta': 0,
+                            'sexta': 0, 'sabado': 0, 'domingo': 0
+                        }
+                    
+                    if dia in usuarios_dados[usuario]:
+                        usuarios_dados[usuario][dia] += peso
+                
+                usuarios_lista = []
+                for usuario, dados in usuarios_dados.items():
+                    total = sum(dados.values())
+                    usuarios_lista.append({
+                        "nome": usuario,
+                        "total": total,
+                        "selecionado": False,
+                        "dados": dados
+                    })
+                
+                usuarios_lista.sort(key=lambda x: x["total"], reverse=True)
+                self._usuariosComparacao = usuarios_lista
+                self.usuariosComparacaoChanged.emit()
+                
+        except Exception as e:
+            print(f"Erro ao gerar dados de comparação: {str(e)}")
+
+    @pyqtSlot(str)
+    def filtrarUsuariosComparacao(self, filtro):
+        try:
+            self._filtroUsuariosComparacao = filtro.lower()
+            if not hasattr(self, '_usuariosComparacaoOriginais'):
+                self._usuariosComparacaoOriginais = self._usuariosComparacao.copy()
+            
+            if not filtro:
+                self._usuariosComparacao = self._usuariosComparacaoOriginais.copy()
+            else:
+                self._usuariosComparacao = [
+                    usuario for usuario in self._usuariosComparacaoOriginais
+                    if filtro in usuario["nome"].lower()
+                ]
+            
+            self.usuariosComparacaoChanged.emit()
+        except Exception as e:
+            print(f"Erro ao filtrar usuários: {str(e)}")
+
+    @pyqtSlot(str)
+    def toggleUsuarioComparacao(self, nome_usuario):
+        try:
+            for usuario in self._usuariosComparacao:
+                if usuario["nome"] == nome_usuario:
+                    usuario["selecionado"] = not usuario["selecionado"]
+                    break
+            
+            self._atualizarDadosComparacao()
+            self.usuariosComparacaoChanged.emit()
+        except Exception as e:
+            print(f"Erro ao alternar usuário: {str(e)}")
+
+    @pyqtSlot()
+    def selecionarTodosUsuarios(self):
+        try:
+            for usuario in self._usuariosComparacao:
+                usuario["selecionado"] = True
+            
+            self._atualizarDadosComparacao()
+            self.usuariosComparacaoChanged.emit()
+        except Exception as e:
+            print(f"Erro ao selecionar todos: {str(e)}")
+
+    @pyqtSlot()
+    def limparSelecaoUsuarios(self):
+        try:
+            for usuario in self._usuariosComparacao:
+                usuario["selecionado"] = False
+            
+            self._dadosComparacao = []
+            self.usuariosComparacaoChanged.emit()
+            self.comparacaoDataChanged.emit()
+        except Exception as e:
+            print(f"Erro ao limpar seleção: {str(e)}")
+
+    def _atualizarDadosComparacao(self):
+        try:
+            usuarios_selecionados = [u for u in self._usuariosComparacao if u["selecionado"]]
+            
+            dados_comparacao = []
+            dias_ordem = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo']
+            
+            for usuario in usuarios_selecionados:
+                valores = [usuario["dados"][dia] for dia in dias_ordem]
+                dados_comparacao.append({
+                    "nome": usuario["nome"],
+                    "valores": valores
+                })
+            
+            self._dadosComparacao = dados_comparacao
+            self.comparacaoDataChanged.emit()
+            print(f"Dados de comparação atualizados: {len(dados_comparacao)} usuários")
+        except Exception as e:
+            print(f"Erro ao atualizar dados de comparação: {str(e)}")
+
+    @pyqtProperty(list, notify=usuariosComparacaoChanged)
+    def usuariosComparacao(self):
+        return self._usuariosComparacao
+
+    @pyqtProperty(list, notify=comparacaoDataChanged)
+    def dadosComparacao(self):
+        return self._dadosComparacao
+
+    @pyqtProperty(float, notify=comparacaoDataChanged)
+    def maxComparacaoValue(self):
+        try:
+            if not self._dadosComparacao:
+                return 100.0
+            
+            max_val = 0
+            for dados in self._dadosComparacao:
+                valores = dados.get("valores", [])
+                if valores:
+                    max_val = max(max_val, max(valores))
+            
+            return max(100.0, math.ceil(max_val * 1.1))
+        except Exception:
+            return 100.0
+
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
     def __init__(self):
@@ -1437,9 +1612,15 @@ class MainWindow(QMainWindow):
         self.atualizar_filtros_grafico()
         if hasattr(self, "backend_qml") and self.backend_qml is not None:
             self.backend_qml.atualizar_arquivos_carregados()
-            self.backend_qml.atualizar_grafico()
-            self.backend_qml.atualizar_kpis()
+            QApplication.processEvents()
             self.backend_qml.atualizar_tabela_pesos()
+            QApplication.processEvents()
+            self.backend_qml.atualizar_grafico()
+            QApplication.processEvents()
+            self.backend_qml.atualizar_kpis()
+            self.backend_qml.nomesChanged.emit()
+            self.backend_qml.valoresChanged.emit()
+            QApplication.processEvents()
             self.backend_qml.force_chart_update()
 
     def carregar_dados_mensais(self):
@@ -1584,17 +1765,17 @@ class GerenciadorPesosAgendamento:
                 
         return float(peso)
 
-
 if __name__ == "__main__":
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-
         filtered_args = [arg for arg in sys.argv if not arg.startswith('ljsdebugger=')]
         app = QApplication(filtered_args)
-        app.setApplicationName("KPI App")
-        engine = QQmlApplicationEngine()
-
-
+        app.setApplicationName("Analyzer APROD")
+        
+        splash_engine = QQmlApplicationEngine()
+        splash_engine.load(os.path.join(os.path.dirname(__file__), "SplashScreen.qml"))
+        
+        QApplication.processEvents()
+        
         os.makedirs("dados_mensais", exist_ok=True)
 
         mainwindow = MainWindow()
@@ -1603,23 +1784,27 @@ if __name__ == "__main__":
         mainwindow.kpis_qml = kpis
         mainwindow.backend_qml = backend
 
-
-        engine.rootContext().setContextProperty("mainwindow", mainwindow)
-        engine.rootContext().setContextProperty("backend", backend)
-        engine.rootContext().setContextProperty("kpis", kpis)
-
+        main_engine = QQmlApplicationEngine()
+        main_engine.rootContext().setContextProperty("mainwindow", mainwindow)
+        main_engine.rootContext().setContextProperty("backend", backend)
+        main_engine.rootContext().setContextProperty("kpis", kpis)
 
         backend.atualizar_arquivos_carregados()
-
+        QApplication.processEvents()
         backend.atualizar_grafico()
+        QApplication.processEvents()
         backend.atualizar_kpis()
-        print("Gerando tabela da semana na inicialização...")
-        backend.gerarTabelaSemana() 
+        QApplication.processEvents()
+        backend.gerarTabelaSemana()
+        QApplication.processEvents()
 
-        qml_file = os.path.join(os.path.dirname(__file__), "MainWindow.qml")
-        engine.load(qml_file)
+        for obj in splash_engine.rootObjects():
+            obj.close()
         
-        if not engine.rootObjects():
+        qml_file = os.path.join(os.path.dirname(__file__), "MainWindow.qml")
+        main_engine.load(qml_file)
+        
+        if not main_engine.rootObjects():
             print("ERROR: Falha ao carregar arquivo QML!")
             sys.exit(1)
             

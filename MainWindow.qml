@@ -128,6 +128,11 @@ Window {
                     onLoaded: {
                         if (backend) {
                             backend.handle_page_loaded(currentPage)
+                            if (currentPage === "dashboard") {
+                                Qt.callLater(function() {
+                                    backend.atualizar_grafico()
+                                })
+                            }
                         }
                     }
                     
@@ -516,7 +521,7 @@ Window {
 
     Component {
         id: dashboardPage
-
+    
         Rectangle {
             color: "transparent"
             anchors.fill: parent
@@ -804,6 +809,7 @@ Window {
                     border.width: 2
     
                     ChartView {
+                        id: chartView
                         anchors.fill: parent
                         anchors.margins: 10
                         antialiasing: true
@@ -813,11 +819,35 @@ Window {
                         titleFont: Qt.font({ pixelSize: 16, bold: true })
                         titleColor: "#1976d2"
                         plotAreaColor: "#ffffff"
-                        margins {
-                            top: 20
-                            bottom: 20
-                            left: 20
-                            right: 20
+                        
+                        Component.onCompleted: {
+                            if (backend) {
+                                Qt.callLater(function() {
+                                    backend.atualizar_grafico()
+                                })
+                            }
+                        }
+                        
+                        Connections {
+                            target: backend
+                            function onNomesChanged() {
+                                if (backend && backend.nomes && backend.valores) {
+                                    eixoUsuarios.categories = backend.nomes
+                                    var barSet = serieMinutas.at(0)
+                                    if (barSet) {
+                                        barSet.values = backend.valores
+                                    }
+                                }
+                            }
+                            function onValoresChanged() {
+                                if (backend && backend.nomes && backend.valores) {
+                                    var barSet = serieMinutas.at(0)
+                                    if (barSet) {
+                                        barSet.values = backend.valores
+                                    }
+                                    eixoValores.max = backend.maxAxisValue
+                                }
+                            }
                         }
     
                         HorizontalBarSeries {
@@ -1796,13 +1826,316 @@ Window {
 
     Component {
         id: compararPage
+    
         Rectangle {
-            color: "white"
-            Text {
-                text: "Página Comparar"
-                anchors.centerIn: parent
-                font.pixelSize: 24
-                color: "black"
+            color: "transparent"
+            anchors.fill: parent
+    
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 20
+    
+                Text {
+                    text: "Comparação de Produtividade entre Usuários"
+                    font.pixelSize: 28
+                    font.bold: true
+                    color: "#3cb3e6"
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.alignment: Qt.AlignHCenter
+                }
+    
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 20
+    
+                    Rectangle {
+                        Layout.preferredWidth: 400
+                        Layout.fillHeight: true
+                        color: "#fff"
+                        border.color: "#3cb3e6"
+                        border.width: 2
+                        radius: 16
+    
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 15
+                            spacing: 10
+    
+                            Text {
+                                text: "Selecionar Usuários para Comparação"
+                                font.pixelSize: 18
+                                font.bold: true
+                                color: "#1976d2"
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+    
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 35
+                                color: "#f5faff"
+                                border.color: "#3cb3e6"
+                                border.width: 1
+                                radius: 8
+    
+                                TextInput {
+                                    id: filtroUsuarios
+                                    anchors.fill: parent
+                                    anchors.margins: 8
+                                    font.pixelSize: 14
+                                    color: "#232946"
+                                    verticalAlignment: TextInput.AlignVCenter
+                                    selectByMouse: true
+    
+                                    onTextChanged: {
+                                        if (backend) {
+                                            backend.filtrarUsuariosComparacao(text)
+                                        }
+                                    }
+    
+                                    Text {
+                                        anchors.fill: parent
+                                        text: "Filtrar usuários..."
+                                        font.pixelSize: 14
+                                        color: "#aaaaaa"
+                                        visible: !parent.text
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+    
+                            ScrollView {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+    
+                                ListView {
+                                    id: listaUsuarios
+                                    model: backend ? backend.usuariosComparacao : []
+                                    spacing: 2
+    
+                                    delegate: Rectangle {
+                                        width: listaUsuarios.width
+                                        height: 35
+                                        color: modelData.selecionado ? "#e3f2fd" : (index % 2 === 0 ? "#f5faff" : "#ffffff")
+                                        border.color: modelData.selecionado ? "#3cb3e6" : "transparent"
+                                        border.width: modelData.selecionado ? 2 : 0
+                                        radius: 6
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.toggleUsuarioComparacao(modelData.nome)
+                                                }
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 8
+                                            spacing: 8
+    
+                                            Rectangle {
+                                                Layout.preferredWidth: 18
+                                                Layout.preferredHeight: 18
+                                                radius: 3
+                                                color: modelData.selecionado ? "#3cb3e6" : "transparent"
+                                                border.color: "#3cb3e6"
+                                                border.width: 2
+    
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: "✓"
+                                                    color: "#ffffff"
+                                                    font.bold: true
+                                                    font.pixelSize: 12
+                                                    visible: modelData.selecionado
+                                                }
+                                            }
+    
+                                            Text {
+                                                text: modelData.nome
+                                                font.pixelSize: 13
+                                                color: "#232946"
+                                                Layout.fillWidth: true
+                                                elide: Text.ElideRight
+                                            }
+    
+                                            Text {
+                                                text: modelData.total.toFixed(1)
+                                                font.pixelSize: 12
+                                                color: "#3cb3e6"
+                                                font.bold: true
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+    
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+    
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 35
+                                    radius: 8
+                                    color: "#3cb3e6"
+    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.selecionarTodosUsuarios()
+                                            }
+                                        }
+                                    }
+    
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Selecionar Todos"
+                                        color: "#ffffff"
+                                        font.bold: true
+                                        font.pixelSize: 12
+                                    }
+                                }
+    
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 35
+                                    radius: 8
+                                    color: "#e0e0e0"
+    
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            if (backend) {
+                                                backend.limparSelecaoUsuarios()
+                                            }
+                                        }
+                                    }
+    
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Limpar Seleção"
+                                        color: "#232946"
+                                        font.bold: true
+                                        font.pixelSize: 12
+                                    }
+                                }
+                            }
+                        }
+                    }
+    
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        color: "#fff"
+                        border.color: "#3cb3e6"
+                        border.width: 2
+                        radius: 16
+    
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 15
+                            spacing: 10
+    
+                            Text {
+                                text: "Gráfico de Comparação"
+                                font.pixelSize: 18
+                                font.bold: true
+                                color: "#1976d2"
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+    
+                            ChartView {
+                                id: graficoComparacao
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                antialiasing: true
+                                backgroundColor: "#ffffff"
+                                legend.visible: true
+                                legend.alignment: Qt.AlignBottom
+                                title: "Produtividade por Dia da Semana"
+                                titleFont: Qt.font({ pixelSize: 14, bold: true })
+                                titleColor: "#1976d2"
+                                plotAreaColor: "#ffffff"
+                            
+                                ValueAxis {
+                                    id: eixoX
+                                    min: 0
+                                    max: 6
+                                    tickCount: 7
+                                    labelFormat: ""
+                                    labelsFont.pixelSize: 10
+                                    labelsColor: "#232946"
+                                    gridLineColor: "#e0e0e0"
+                                }
+                            
+                                ValueAxis {
+                                    id: eixoY
+                                    min: 0
+                                    max: backend ? backend.maxComparacaoValue : 100
+                                    tickCount: 6
+                                    labelFormat: "%d"
+                                    labelsFont.pixelSize: 10
+                                    labelsColor: "#232946"
+                                    gridLineColor: "#e0e0e0"
+                                }
+                            
+                                function atualizarGraficoComparacao() {
+                                    graficoComparacao.removeAllSeries()
+                                    
+                                    if (!backend || !backend.dadosComparacao) return
+                            
+                                    var cores = ["#3cb3e6", "#4caf50", "#ff9800", "#f44336", "#9c27b0", "#607d8b"]
+                                    
+                                    for (var i = 0; i < backend.dadosComparacao.length; i++) {
+                                        var userData = backend.dadosComparacao[i]
+                                        var series = graficoComparacao.createSeries(ChartView.SeriesTypeLine, userData.nome, eixoX, eixoY)
+                                        
+                                        series.color = cores[i % cores.length]
+                                        series.width = 3
+                                        series.pointsVisible = true
+                                        series.pointLabelsVisible = true
+                                        series.pointLabelsFormat = "@yPoint"
+                                        series.pointLabelsFont.pixelSize = 10
+                                        
+                                        for (var j = 0; j < userData.valores.length; j++) {
+                                            series.append(j, userData.valores[j])
+                                        }
+                                    }
+                                }
+                            
+                                Connections {
+                                    target: backend
+                                    function onComparacaoDataChanged() {
+                                        atualizarGraficoComparacao()
+                                    }
+                                }
+                            
+                                Component.onCompleted: {
+                                    if (backend) {
+                                        backend.gerarDadosComparacao()
+                                    }
+                                }
+                            
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: !backend || !backend.dadosComparacao || backend.dadosComparacao.length === 0
+                                    text: "Selecione usuários para comparar"
+                                    color: "#3cb3e6"
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
