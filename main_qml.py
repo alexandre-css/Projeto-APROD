@@ -50,6 +50,7 @@ class Backend(QObject):
     usuariosComparacaoChanged = pyqtSignal()
     comparacaoDataChanged = pyqtSignal()
     maxComparacaoValueChanged = pyqtSignal()
+    temaChanged = pyqtSignal()
     
     def __init__(self, mainwindow):
         super().__init__()
@@ -67,8 +68,81 @@ class Backend(QObject):
         self._currentPage = "dashboard"
         self._filtroUsuario = ""
         self._usuariosComparacao = []
+        self._usuariosComparacaoOriginais = []
         self._dadosComparacao = []
-        self._filtroUsuariosComparacao = ""
+        self._temaEscuro = self._carregarTema()
+        if self._temaEscuro is None:
+            self._temaEscuro = True
+    
+    @pyqtSlot()
+    def toggleTema(self):
+        try:
+            self._temaEscuro = not self._temaEscuro
+            self._salvarTema()
+            self.temaChanged.emit()
+            print(f"Tema alterado para: {'Escuro' if self._temaEscuro else 'Claro'}")
+        except Exception as e:
+            print(f"Erro ao alternar tema: {str(e)}")
+    
+    def _carregarTema(self):
+        try:
+            pasta_salvos = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "salvos")
+            arquivo_tema = os.path.join(pasta_salvos, "tema.json")
+            
+            if os.path.exists(arquivo_tema):
+                with open(arquivo_tema, 'r', encoding='utf-8') as f:
+                    dados = json.load(f)
+                    return dados.get("tema_escuro", False)
+            return False
+        except Exception as e:
+            print(f"Erro ao carregar tema: {str(e)}")
+            return False
+    
+    def _salvarTema(self):
+        try:
+            pasta_salvos = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "salvos")
+            os.makedirs(pasta_salvos, exist_ok=True)
+            arquivo_tema = os.path.join(pasta_salvos, "tema.json")
+            
+            with open(arquivo_tema, 'w', encoding='utf-8') as f:
+                json.dump({"tema_escuro": self._temaEscuro}, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Erro ao salvar tema: {str(e)}")
+    
+    @pyqtProperty(bool, notify=temaChanged)
+    def temaEscuro(self):
+        return self._temaEscuro
+    
+    @pyqtSlot()
+    def resetarConfiguracoes(self):
+        try:
+            self._mesesAtivos = []
+            self._filtroUsuario = ""
+            self._sortColumn = "usuario"
+            self._sortAscending = True
+            self._temaEscuro = False
+            
+            self.mesesAtivosChanged.emit()
+            self.sortColumnChanged.emit(self._sortColumn)
+            self.sortAscendingChanged.emit(self._sortAscending)
+            self.temaChanged.emit()
+            
+            pasta_salvos = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "salvos")
+            arquivo_pesos = os.path.join(pasta_salvos, "pesos.json")
+            arquivo_tema = os.path.join(pasta_salvos, "tema.json")
+            
+            if os.path.exists(arquivo_pesos):
+                os.remove(arquivo_pesos)
+            if os.path.exists(arquivo_tema):
+                os.remove(arquivo_tema)
+            
+            tipos_atuais = self._coletar_tipos_brutos()
+            self.mainwindow.gerenciador_pesos.restaurar_pesos_padrao(tipos_atuais)
+            self.atualizar_tabela_pesos()
+            
+            print("Configurações resetadas com sucesso")
+        except Exception as e:
+            print(f"Erro ao resetar configurações: {str(e)}")
 
     def conectar_sinais_ui(self):
         self.sortColumnChanged.connect(lambda col: print(f"Coluna ordenação mudou: {col}"))
@@ -500,12 +574,32 @@ class Backend(QObject):
                 self.gerarTabelaSemana()
                 self.atualizar_ranking_model()
             elif page == "comparar":
+                print("Carregando página de comparação...")
                 self.gerarDadosComparacao()
             elif page == "pesos":
                 self.atualizar_tabela_pesos()
                 self.popular_pesos_model()
         except Exception as e:
             print(f"Erro ao carregar página {page}: {str(e)}")
+
+    @pyqtSlot()
+    def debugDadosComparacao(self):
+        try:
+            print("=== DEBUG DADOS DE COMPARAÇÃO ===")
+            print(f"Usuários disponíveis: {len(self._usuariosComparacao)}")
+            print(f"Usuários selecionados: {len([u for u in self._usuariosComparacao if u.get('selecionado', False)])}")
+            print(f"Dados de comparação: {len(self._dadosComparacao)}")
+            
+            for i, usuario in enumerate(self._usuariosComparacao[:5]):
+                print(f"  {i}: {usuario['nome']} - Selecionado: {usuario.get('selecionado', False)} - Total: {usuario['total']}")
+            
+            for dados in self._dadosComparacao:
+                print(f"  Dados para {dados['nome']}: {dados['valores']}")
+            
+            print(f"Max comparacao value: {self.maxComparacaoValue}")
+            print("=== FIM DEBUG ===")
+        except Exception as e:
+            print(f"Erro no debug: {str(e)}")
 
     @pyqtSlot()
     def force_chart_update(self):
@@ -1309,6 +1403,49 @@ class Backend(QObject):
             print(f"❌ ERRO NO TESTE: {str(e)}")
             traceback.print_exc()
 
+    @pyqtSlot(str)
+    def filtrarUsuariosComparacao(self, filtro):
+        try:
+            if not hasattr(self, '_usuariosComparacaoOriginais') or not self._usuariosComparacaoOriginais:
+                return
+            
+            if not filtro:
+                self._usuariosComparacao = self._usuariosComparacaoOriginais.copy()
+            else:
+                filtro_lower = filtro.lower()
+                self._usuariosComparacao = [
+                    usuario for usuario in self._usuariosComparacaoOriginais 
+                    if filtro_lower in usuario["nome"].lower()
+                ]
+            
+            self.usuariosComparacaoChanged.emit()
+        except Exception as e:
+            print(f"Erro ao filtrar usuários de comparação: {str(e)}")
+
+    @pyqtSlot()
+    def _atualizarDadosComparacao(self):
+        try:
+            usuarios_selecionados = [u for u in self._usuariosComparacao if u.get("selecionado", False)]
+            
+            dados_comparacao = []
+            dias_ordem = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo']
+            
+            for usuario in usuarios_selecionados:
+                valores = [usuario["dados"].get(dia, 0) for dia in dias_ordem]
+                dados_comparacao.append({
+                    "nome": usuario["nome"],
+                    "valores": valores
+                })
+            
+            self._dadosComparacao = dados_comparacao
+            print(f"Dados de comparação atualizados: {len(dados_comparacao)} usuários selecionados")
+            for dados in dados_comparacao:
+                print(f"  {dados['nome']}: {dados['valores']}")
+            self.comparacaoDataChanged.emit()
+            self.maxComparacaoValueChanged.emit()
+        except Exception as e:
+            print(f"Erro ao atualizar dados de comparação: {str(e)}")
+    
     @pyqtSlot()
     def gerarDadosComparacao(self):
         try:
@@ -1318,6 +1455,7 @@ class Backend(QObject):
             
             if not arquivos:
                 self._usuariosComparacao = []
+                self._usuariosComparacaoOriginais = []
                 self._dadosComparacao = []
                 self.usuariosComparacaoChanged.emit()
                 self.comparacaoDataChanged.emit()
@@ -1337,6 +1475,16 @@ class Backend(QObject):
             
             if "Usuário" in df_total.columns and "Data criação" in df_total.columns:
                 df_total["Data criação"] = pd.to_datetime(df_total["Data criação"], errors='coerce', dayfirst=True)
+                
+                datas_ainda_invalidas = df_total["Data criação"].isna()
+                if datas_ainda_invalidas.any():
+                    df_total.loc[datas_ainda_invalidas, "Data criação"] = pd.to_datetime(
+                        df_total.loc[datas_ainda_invalidas, "Data criação"], 
+                        errors='coerce', 
+                        dayfirst=False
+                    )
+                
+                df_total = df_total[df_total["Data criação"].notna()]
                 df_total["DiaSemana"] = df_total["Data criação"].dt.day_name()
                 
                 mapeamento_dias = {
@@ -1375,43 +1523,29 @@ class Backend(QObject):
                 
                 usuarios_lista.sort(key=lambda x: x["total"], reverse=True)
                 self._usuariosComparacao = usuarios_lista
+                self._usuariosComparacaoOriginais = usuarios_lista.copy()
+                self._dadosComparacao = []
                 self.usuariosComparacaoChanged.emit()
+                self.comparacaoDataChanged.emit()
+                print(f"Dados de comparação gerados: {len(usuarios_lista)} usuários")
                 
         except Exception as e:
             print(f"Erro ao gerar dados de comparação: {str(e)}")
-
-    @pyqtSlot(str)
-    def filtrarUsuariosComparacao(self, filtro):
-        try:
-            self._filtroUsuariosComparacao = filtro.lower()
-            if not hasattr(self, '_usuariosComparacaoOriginais'):
-                self._usuariosComparacaoOriginais = self._usuariosComparacao.copy()
-            
-            if not filtro:
-                self._usuariosComparacao = self._usuariosComparacaoOriginais.copy()
-            else:
-                self._usuariosComparacao = [
-                    usuario for usuario in self._usuariosComparacaoOriginais
-                    if filtro in usuario["nome"].lower()
-                ]
-            
-            self.usuariosComparacaoChanged.emit()
-        except Exception as e:
-            print(f"Erro ao filtrar usuários: {str(e)}")
-
+    
     @pyqtSlot(str)
     def toggleUsuarioComparacao(self, nome_usuario):
         try:
             for usuario in self._usuariosComparacao:
                 if usuario["nome"] == nome_usuario:
-                    usuario["selecionado"] = not usuario["selecionado"]
+                    usuario["selecionado"] = not usuario.get("selecionado", False)
+                    print(f"Usuario {nome_usuario} agora está {'selecionado' if usuario['selecionado'] else 'desmarcado'}")
                     break
             
             self._atualizarDadosComparacao()
             self.usuariosComparacaoChanged.emit()
         except Exception as e:
             print(f"Erro ao alternar usuário: {str(e)}")
-
+    
     @pyqtSlot()
     def selecionarTodosUsuarios(self):
         try:
@@ -1422,7 +1556,7 @@ class Backend(QObject):
             self.usuariosComparacaoChanged.emit()
         except Exception as e:
             print(f"Erro ao selecionar todos: {str(e)}")
-
+    
     @pyqtSlot()
     def limparSelecaoUsuarios(self):
         try:
@@ -1432,38 +1566,20 @@ class Backend(QObject):
             self._dadosComparacao = []
             self.usuariosComparacaoChanged.emit()
             self.comparacaoDataChanged.emit()
+            self.maxComparacaoValueChanged.emit()
+            print("Seleção de usuários limpa")
         except Exception as e:
             print(f"Erro ao limpar seleção: {str(e)}")
-
-    def _atualizarDadosComparacao(self):
-        try:
-            usuarios_selecionados = [u for u in self._usuariosComparacao if u["selecionado"]]
-            
-            dados_comparacao = []
-            dias_ordem = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo']
-            
-            for usuario in usuarios_selecionados:
-                valores = [usuario["dados"][dia] for dia in dias_ordem]
-                dados_comparacao.append({
-                    "nome": usuario["nome"],
-                    "valores": valores
-                })
-            
-            self._dadosComparacao = dados_comparacao
-            self.comparacaoDataChanged.emit()
-            print(f"Dados de comparação atualizados: {len(dados_comparacao)} usuários")
-        except Exception as e:
-            print(f"Erro ao atualizar dados de comparação: {str(e)}")
-
+    
     @pyqtProperty(list, notify=usuariosComparacaoChanged)
     def usuariosComparacao(self):
         return self._usuariosComparacao
-
+    
     @pyqtProperty(list, notify=comparacaoDataChanged)
     def dadosComparacao(self):
         return self._dadosComparacao
-
-    @pyqtProperty(float, notify=comparacaoDataChanged)
+    
+    @pyqtProperty(float, notify=maxComparacaoValueChanged)
     def maxComparacaoValue(self):
         try:
             if not self._dadosComparacao:
@@ -1475,9 +1591,147 @@ class Backend(QObject):
                 if valores:
                     max_val = max(max_val, max(valores))
             
-            return max(100.0, math.ceil(max_val * 1.1))
-        except Exception:
+            result = max(100.0, math.ceil(max_val * 1.2))
+            print(f"Max comparacao value calculado: {result}")
+            return result
+        except Exception as e:
+            print(f"Erro ao calcular maxComparacaoValue: {str(e)}")
             return 100.0
+
+    @pyqtSlot()
+    def abrirPastaApp(self):
+        try:
+            import subprocess
+            import platform
+            
+            pasta_app = os.path.dirname(__file__)
+            
+            if platform.system() == "Windows":
+                subprocess.run(["explorer", pasta_app])
+            elif platform.system() == "Darwin":
+                subprocess.run(["open", pasta_app])
+            else:
+                subprocess.run(["xdg-open", pasta_app])
+        except Exception as e:
+            print(f"Erro ao abrir pasta do aplicativo: {str(e)}")
+
+    @pyqtSlot()
+    def abrirPastaDados(self):
+        try:
+            import subprocess
+            import platform
+            
+            pasta_dados = os.path.join(os.path.dirname(__file__), "dados_mensais")
+            os.makedirs(pasta_dados, exist_ok=True)
+            
+            if platform.system() == "Windows":
+                subprocess.run(["explorer", pasta_dados])
+            elif platform.system() == "Darwin":
+                subprocess.run(["open", pasta_dados])
+            else:
+                subprocess.run(["xdg-open", pasta_dados])
+        except Exception as e:
+            print(f"Erro ao abrir pasta de dados: {str(e)}")
+
+    @pyqtSlot()
+    def abrirPastaSalvos(self):
+        try:
+            import subprocess
+            import platform
+            
+            pasta_salvos = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "salvos")
+            os.makedirs(pasta_salvos, exist_ok=True)
+            
+            if platform.system() == "Windows":
+                subprocess.run(["explorer", pasta_salvos])
+            elif platform.system() == "Darwin":
+                subprocess.run(["open", pasta_salvos])
+            else:
+                subprocess.run(["xdg-open", pasta_salvos])
+        except Exception as e:
+            print(f"Erro ao abrir pasta de salvos: {str(e)}")
+
+    @pyqtSlot()
+    def limparDadosCache(self):
+        try:
+            self._nomes = []
+            self._valores = []
+            self._tabelaSemana = []
+            self._dadosComparacao = []
+            self._usuariosComparacao = []
+            self._usuariosComparacaoOriginais = []
+            
+            self.nomesChanged.emit()
+            self.valoresChanged.emit()
+            self.tabelaSemanaChanged.emit()
+            self.comparacaoDataChanged.emit()
+            self.usuariosComparacaoChanged.emit()
+            
+            print("Cache de dados limpo com sucesso")
+        except Exception as e:
+            print(f"Erro ao limpar cache: {str(e)}")
+
+    @pyqtSlot()
+    def resetarConfiguracoes(self):
+        try:
+            self._mesesAtivos = []
+            self._filtroUsuario = ""
+            self._sortColumn = "usuario"
+            self._sortAscending = True
+            
+            self.mesesAtivosChanged.emit()
+            self.sortColumnChanged.emit(self._sortColumn)
+            self.sortAscendingChanged.emit(self._sortAscending)
+            
+            pasta_salvos = os.path.join(os.path.expanduser("~"), "Analyzer-Dev-APROD", "salvos")
+            arquivo_pesos = os.path.join(pasta_salvos, "pesos.json")
+            
+            if os.path.exists(arquivo_pesos):
+                os.remove(arquivo_pesos)
+            
+            tipos_atuais = self._coletar_tipos_brutos()
+            self.mainwindow.gerenciador_pesos.restaurar_pesos_padrao(tipos_atuais)
+            self.atualizar_tabela_pesos()
+            
+            print("Configurações resetadas com sucesso")
+        except Exception as e:
+            print(f"Erro ao resetar configurações: {str(e)}")
+
+    @pyqtProperty(str)
+    def versaoApp(self):
+        return "1.0.0"
+
+    @pyqtProperty(str)
+    def dataCompilacao(self):
+        return "Junho 2025"
+
+    @pyqtProperty(int)
+    def totalArquivosDados(self):
+        try:
+            pasta = "dados_mensais"
+            if os.path.exists(pasta):
+                return len([arq for arq in os.listdir(pasta) if arq.endswith(".xlsx")])
+            return 0
+        except:
+            return 0
+
+    @pyqtProperty(str)
+    def tamanhoCache(self):
+        try:
+            total_items = (len(self._nomes) + len(self._valores) + 
+                        len(self._tabelaSemana) + len(self._dadosComparacao) + 
+                        len(self._usuariosComparacao))
+            return f"{total_items} itens"
+        except:
+            return "0 itens"
+
+    @pyqtProperty(str)
+    def statusSistema(self):
+        try:
+            import platform
+            return f"{platform.system()} {platform.release()}"
+        except:
+            return "Sistema não identificado"
 
 class KPIs(QObject):
     kpisChanged = pyqtSignal()
@@ -1780,7 +2034,7 @@ if __name__ == "__main__":
 
         mainwindow = MainWindow()
         backend = Backend(mainwindow)
-        kpis = KPIs()
+        kpis = KPIs()        
         mainwindow.kpis_qml = kpis
         mainwindow.backend_qml = backend
 

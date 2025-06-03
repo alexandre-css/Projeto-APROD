@@ -12,24 +12,77 @@ Window {
     visibility: Window.Maximized
 
     property string currentPage: "dashboard"
+    property bool temaEscuro: backend ? backend.temaEscuro : true
+
+    property var coresClaro: {
+        "background": "#f9fafb",
+        "backgroundSecundario": "#e5e7ea",
+        "cardBackground": "#fff",
+        "bordaCard": "#3cb3e6",
+        "textoTitulo": "#1976d2",
+        "textoPrimario": "#232946",
+        "textoSecundario": "#666666",
+        "acento": "#3cb3e6",
+        "hover": "#e3f2fd",
+        "sidebar": "#fff",
+        "bordaSidebar": "#e0e0e0",
+        "fundoInput": "#ffffff",
+        "textoInput": "#232946",
+        "bordaInput": "#e0e0e0",
+        "fundoTabela": "#ffffff",
+        "linhaTabela": "#f8f9fa",
+        "headerTabela": "#e3f2fd",
+        "fundoPopup": "#ffffff",
+        "fundoGrafico": "#ffffff"
+    }
+    
+    property var coresEscuro: {
+        "background": "#1a1a1a",
+        "backgroundSecundario": "#2d2d2d",
+        "cardBackground": "#2d2d2d",
+        "bordaCard": "#4a90e2",
+        "textoTitulo": "#4a90e2",
+        "textoPrimario": "#ffffff",
+        "textoSecundario": "#b0b0b0",
+        "acento": "#4a90e2",
+        "hover": "#3d3d3d",
+        "sidebar": "#262626",
+        "bordaSidebar": "#404040",
+        "fundoInput": "#3d3d3d",
+        "textoInput": "#ffffff",
+        "bordaInput": "#404040",
+        "fundoTabela": "#2d2d2d",
+        "linhaTabela": "#353535",
+        "headerTabela": "#3d3d3d",
+        "fundoPopup": "#2d2d2d",
+        "fundoGrafico": "#2d2d2d"
+    }
+
+    property var cores: temaEscuro ? coresEscuro : coresClaro
+
+    Connections {
+        target: backend
+        function onTemaChanged() {
+            temaEscuro = backend.temaEscuro
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#f9fafb" }
-            GradientStop { position: 1.0; color: "#e5e7ea" }
+            GradientStop { position: 0.0; color: cores.background }
+            GradientStop { position: 1.0; color: cores.backgroundSecundario }
         }
 
         RowLayout {
             anchors.fill: parent
             spacing: 0
 
-            // MENU LATERAL
             Rectangle {
                 id: sidebar
                 width: hovered ? 220 : 110
-                color: "#fff"
-                border.color: "#e0e0e0"
+                color: cores.sidebar
+                border.color: cores.bordaSidebar
                 Layout.fillHeight: true
                 z: 3
                 property bool hovered: false
@@ -64,10 +117,10 @@ Window {
                             Layout.preferredHeight: 70
                             Layout.topMargin: 15
                             Layout.bottomMargin: 15
-                            color: currentPage === modelData.page ? "#e3f2fd" : "transparent"
+                            color: currentPage === modelData.page ? cores.hover : "transparent"
                             radius: 12
                             border.width: currentPage === modelData.page ? 2 : 0
-                            border.color: "#3cb3e6"
+                            border.color: cores.acento
                             
                             MouseArea {
                                 anchors.fill: parent
@@ -96,7 +149,7 @@ Window {
                                     opacity: sidebar.hovered ? 1 : 0
                                     font.pixelSize: 16
                                     font.weight: Font.Medium
-                                    color: currentPage === modelData.page ? "#1976d2" : "#424242"
+                                    color: currentPage === modelData.page ? cores.textoTitulo : cores.textoPrimario
                                     Layout.fillWidth: true
                                     Layout.alignment: Qt.AlignVCenter
                                     Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -109,7 +162,6 @@ Window {
                 }
             }
 
-            // ÁREA PRINCIPAL
             Rectangle {
                 color: "transparent"
                 Layout.fillWidth: true
@@ -140,7 +192,14 @@ Window {
                         target: backend
                         function onChartUpdateRequired() {
                             if (currentPage === "dashboard") {
-                                pageLoader.item.forceLayout()
+                                if (pageLoader.item && pageLoader.item.children.length > 0) {
+                                    var chartView = pageLoader.item.children[0].children[2]
+                                    if (chartView) {
+                                        Qt.callLater(function() {
+                                            backend.atualizar_grafico()
+                                        })
+                                    }
+                                }
                             }
                         }
                     }
@@ -158,34 +217,35 @@ Window {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         anchors.centerIn: parent
     
-
         Rectangle {
             anchors.fill: parent
-            color: "#ffffff"
+            color: cores.fundoPopup
             radius: 8
-
+            border.color: cores.bordaCard
+            border.width: 2
+    
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 20
-
+    
                 Text {
                     text: "Pesos salvos com sucesso!"
                     font.pixelSize: 18
-                    color: "#3cb3e6"
+                    color: cores.acento
                     Layout.alignment: Qt.AlignHCenter
                 }
-
+    
                 Text {
                     text: "Arquivo disponível na pasta:\n'Documentos/Analyzer-Dev-APROD/pesos salvos'"
                     font.pixelSize: 14
-                    color: "#232946"
+                    color: cores.textoPrimario
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                 }
             }
         }
     }
-
+    
     Popup {
         id: restoreConfirmation
         width: 400
@@ -194,38 +254,38 @@ Window {
         focus: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         anchors.centerIn: parent
-
+    
         Rectangle {
             anchors.fill: parent
-            color: "#ffffff"
+            color: cores.fundoPopup
             radius: 8
-            border.color: "#3cb3e6"
+            border.color: cores.bordaCard
             border.width: 2
-
+    
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 20
                 spacing: 20
-
+    
                 Text {
                     text: "Você tem certeza que deseja restaurar todos os pesos para 1?"
                     font.pixelSize: 16
-                    color: "#232946"
+                    color: cores.textoPrimario
                     wrapMode: Text.WordWrap
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                 }
-
+    
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
                     spacing: 20
-
+    
                     Rectangle {
                         width: 100
                         height: 40
                         radius: 8
-                        color: "#3cb3e6"
-
+                        color: cores.acento
+    
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
@@ -236,7 +296,7 @@ Window {
                                 }
                             }
                         }
-
+    
                         Text {
                             anchors.centerIn: parent
                             text: "Sim"
@@ -245,23 +305,23 @@ Window {
                             font.pixelSize: 14
                         }
                     }
-
+    
                     Rectangle {
                         width: 100
                         height: 40
                         radius: 8
-                        color: "#e0e0e0"
-
+                        color: cores.textoSecundario
+    
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: restoreConfirmation.close()
                         }
-
+    
                         Text {
                             anchors.centerIn: parent
                             text: "Cancelar"
-                            color: "#232946"
+                            color: cores.textoPrimario
                             font.bold: true
                             font.pixelSize: 14
                         }
@@ -270,7 +330,7 @@ Window {
             }
         }
     }
-
+    
     Popup {
         id: exportPopup
         width: 420
@@ -282,9 +342,9 @@ Window {
     
         Rectangle {
             anchors.fill: parent
-            color: "#ffffff"
+            color: cores.fundoPopup
             radius: 12
-            border.color: "#3cb3e6"
+            border.color: cores.bordaCard
             border.width: 2
     
             ColumnLayout {
@@ -295,7 +355,7 @@ Window {
                 Text {
                     text: "Selecione o formato para exportação:"
                     font.pixelSize: 18
-                    color: "#232946"
+                    color: cores.textoPrimario
                     font.bold: true
                     Layout.alignment: Qt.AlignHCenter
                 }
@@ -309,7 +369,7 @@ Window {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 50
                         radius: 10
-                        color: "#3cb3e6"
+                        color: cores.acento
     
                         MouseArea {
                             anchors.fill: parent
@@ -419,7 +479,7 @@ Window {
             }
         }
     }
-
+    
     Popup {
         id: exportSuccessPopup
         width: 450
@@ -438,7 +498,7 @@ Window {
     
         Rectangle {
             anchors.fill: parent
-            color: "#ffffff"
+            color: cores.fundoPopup
             radius: 12
             border.color: "#4caf50"
             border.width: 2
@@ -459,7 +519,7 @@ Window {
                 Text {
                     text: "Arquivo salvo em: exports/tabela_semana"
                     font.pixelSize: 14
-                    color: "#232946"
+                    color: cores.textoPrimario
                     Layout.alignment: Qt.AlignHCenter
                     horizontalAlignment: Text.AlignHCenter
                 }
@@ -498,7 +558,7 @@ Window {
                         width: 80
                         height: 40
                         radius: 8
-                        color: "#e0e0e0"
+                        color: cores.textoSecundario
     
                         MouseArea {
                             anchors.fill: parent
@@ -509,7 +569,7 @@ Window {
                         Text {
                             anchors.centerIn: parent
                             text: "Fechar"
-                            color: "#232946"
+                            color: cores.textoPrimario
                             font.bold: true
                             font.pixelSize: 14
                         }
@@ -540,8 +600,8 @@ Window {
                         Layout.preferredWidth: 280
                         Layout.preferredHeight: 120
                         radius: 16
-                        color: "#f5faff"
-                        border.color: "#3cb3e6"
+                        color: cores.cardBackground
+                        border.color: cores.bordaCard
                         border.width: 2
                 
                         RowLayout {
@@ -563,13 +623,13 @@ Window {
                                 Text {
                                     text: "Total de Minutas"
                                     font.pixelSize: 16
-                                    color: "#3cb3e6"
+                                    color: cores.acento
                                     font.bold: true
                                 }
                                 Text {
                                     text: kpis ? kpis["minutas"] : "0"
                                     font.pixelSize: 28
-                                    color: "#232946"
+                                    color: cores.textoPrimario
                                     font.bold: true
                                 }
                             }
@@ -580,8 +640,8 @@ Window {
                         Layout.preferredWidth: 280
                         Layout.preferredHeight: 120
                         radius: 16
-                        color: "#f5faff"
-                        border.color: "#3cb3e6"
+                        color: cores.cardBackground
+                        border.color: cores.bordaCard
                         border.width: 2
                     
                         RowLayout {
@@ -604,13 +664,13 @@ Window {
                                 Text {
                                     text: "Dia Mais Produtivo"
                                     font.pixelSize: 16
-                                    color: "#3cb3e6"
+                                    color: cores.acento
                                     font.bold: true
                                 }
                                 Text {
                                     text: backend && backend.kpis ? backend.kpis["dia_produtivo"] : "--"
                                     font.pixelSize: backend && backend.kpis && backend.kpis["dia_produtivo"] && backend.kpis["dia_produtivo"].includes("\n") ? 20 : 28
-                                    color: "#232946"
+                                    color: cores.textoPrimario
                                     font.bold: true
                                     wrapMode: Text.WordWrap
                                     width: parent.width
@@ -624,8 +684,8 @@ Window {
                         Layout.preferredWidth: 320
                         Layout.preferredHeight: 120
                         radius: 16
-                        color: "#f5faff"
-                        border.color: "#3cb3e6"
+                        color: cores.cardBackground
+                        border.color: cores.bordaCard
                         border.width: 2
                 
                         RowLayout {
@@ -649,7 +709,7 @@ Window {
                                 Text {
                                     text: "Top 3 Usuários"
                                     font.pixelSize: 16
-                                    color: "#3cb3e6"
+                                    color: cores.acento
                                     font.bold: true
                                 }
                 
@@ -657,18 +717,14 @@ Window {
                                     spacing: 2
                                     
                                     Repeater {
-                                        model: {
-                                            if (!kpis || !kpis["top3"]) return []
-                                            return kpis["top3"].split(" | ").slice(0, 3)
-                                        }
+                                        model: backend && backend.kpis && backend.kpis["top3"] ? backend.kpis["top3"].split(" | ") : []
                                         
                                         Text {
                                             text: modelData
                                             font.pixelSize: 12
-                                            color: "#232946"
-                                            font.bold: true
-                                            elide: Text.ElideRight
-                                            width: 260
+                                            color: cores.textoPrimario
+                                            font.bold: index === 0
+                                            wrapMode: Text.WordWrap
                                         }
                                     }
                                 }
@@ -688,8 +744,8 @@ Window {
                         Layout.alignment: Qt.AlignLeft
                         radius: 12
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
+                            GradientStop { position: 0.0; color: cores.acento }
+                            GradientStop { position: 1.0; color: cores.textoTitulo }
                         }
     
                         MouseArea {
@@ -723,8 +779,8 @@ Window {
                         Layout.preferredHeight: 50
                         Layout.alignment: Qt.AlignCenter
                         radius: 12
-                        color: "#f5faff"
-                        border.color: "#3cb3e6"
+                        color: cores.cardBackground
+                        border.color: cores.bordaCard
                         border.width: 2
     
                         Row {
@@ -737,7 +793,7 @@ Window {
                                 text: "Meses Ativos:"
                                 font.pixelSize: 16
                                 font.bold: true
-                                color: "#3cb3e6"
+                                color: cores.acento
                                 anchors.verticalCenter: parent.verticalCenter
                             }
     
@@ -752,8 +808,8 @@ Window {
     
                                     property bool isActive: backend && backend.mes_ativo_status(modelData)
     
-                                    color: isActive ? "#3cb3e6" : "#f5f5f5"
-                                    border.color: isActive ? "#1976d2" : "#d0d0d0"
+                                    color: isActive ? cores.acento : cores.hover
+                                    border.color: isActive ? cores.textoTitulo : cores.bordaCard
                                     border.width: 2
     
                                     opacity: isActive ? 1.0 : 0.5
@@ -770,7 +826,7 @@ Window {
                                         text: modelData
                                         anchors.centerIn: parent
                                         font.pixelSize: 12
-                                        color: parent.isActive ? "#ffffff" : "#999999"
+                                        color: parent.isActive ? "#ffffff" : cores.textoSecundario
                                         font.bold: parent.isActive
     
                                         Behavior on color { ColorAnimation { duration: 200 } }
@@ -804,8 +860,8 @@ Window {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 16
-                    color: "#fff"
-                    border.color: "#3cb3e6"
+                    color: cores.cardBackground
+                    border.color: cores.bordaCard
                     border.width: 2
     
                     ChartView {
@@ -813,12 +869,12 @@ Window {
                         anchors.fill: parent
                         anchors.margins: 10
                         antialiasing: true
-                        backgroundColor: "#fff"
+                        backgroundColor: cores.fundoGrafico
                         legend.visible: false
                         title: "Minutas por Usuário"
                         titleFont: Qt.font({ pixelSize: 16, bold: true })
-                        titleColor: "#1976d2"
-                        plotAreaColor: "#ffffff"
+                        titleColor: cores.textoTitulo
+                        plotAreaColor: cores.fundoGrafico
                         
                         Component.onCompleted: {
                             if (backend) {
@@ -862,10 +918,10 @@ Window {
                             BarSet {
                                 label: "Minutas"
                                 values: backend && backend.valores ? backend.valores : []
-                                color: "#3cb3e6"
-                                borderColor: "#3cb3e6"
+                                color: cores.acento
+                                borderColor: cores.acento
                                 borderWidth: 0
-                                labelColor: "#232946"
+                                labelColor: cores.textoPrimario
                                 labelFont.pixelSize: 12
                             }
                         }
@@ -874,7 +930,7 @@ Window {
                             id: eixoUsuarios
                             categories: backend && backend.nomes ? backend.nomes : []
                             labelsFont.pixelSize: 12
-                            labelsColor: "#232946"
+                            labelsColor: cores.textoPrimario
                             gridVisible: false
                         }
     
@@ -885,8 +941,8 @@ Window {
                             tickCount: 5
                             labelFormat: "%d"
                             labelsFont.pixelSize: 12
-                            labelsColor: "#232946"
-                            gridLineColor: "#e0e0e0"
+                            labelsColor: cores.textoPrimario
+                            gridLineColor: cores.bordaInput
                             minorGridVisible: false
                         }
     
@@ -894,7 +950,7 @@ Window {
                             anchors.centerIn: parent
                             visible: !backend || !backend.valores || backend.valores.length === 0
                             text: "Nenhum dado disponível"
-                            color: "#3cb3e6"
+                            color: cores.acento
                             font.pixelSize: 18
                             font.bold: true
                         }
@@ -932,7 +988,7 @@ Window {
                     text: "Atribuição de Pesos"
                     font.pixelSize: 28
                     font.bold: true
-                    color: "#3cb3e6"
+                    color: cores.acento
                     horizontalAlignment: Text.AlignHCenter
                     Layout.alignment: Qt.AlignHCenter
                 }
@@ -940,8 +996,8 @@ Window {
                 Rectangle {
                     width: 1100
                     height: 600
-                    color: "#fff"
-                    border.color: "#3cb3e6"
+                    color: cores.cardBackground
+                    border.color: cores.bordaCard
                     border.width: 2
                     radius: 18
                     clip: true
@@ -954,7 +1010,7 @@ Window {
                         Rectangle {
                             width: parent.width
                             height: 50
-                            color: "#e3f2fd"
+                            color: cores.headerTabela
                             radius: 0
                             
                             RowLayout {
@@ -967,7 +1023,7 @@ Window {
                                     text: "Tipo de Agendamento"
                                     font.pixelSize: 18
                                     font.bold: true
-                                    color: "#1976d2"
+                                    color: cores.textoTitulo
                                     horizontalAlignment: Text.AlignHCenter
                                 }
     
@@ -976,7 +1032,7 @@ Window {
                                     text: "Peso"
                                     font.pixelSize: 18
                                     font.bold: true
-                                    color: "#1976d2"
+                                    color: cores.textoTitulo
                                     horizontalAlignment: Text.AlignHCenter
                                 }
                             }
@@ -985,7 +1041,7 @@ Window {
                                 anchors.bottom: parent.bottom
                                 width: parent.width
                                 height: 2
-                                color: "#3cb3e6"
+                                color: cores.bordaCard
                             }
                         }
     
@@ -1006,7 +1062,7 @@ Window {
                                     Rectangle {
                                         width: column.width
                                         height: 50
-                                        color: index % 2 === 0 ? "#f5faff" : "#ffffff"
+                                        color: index % 2 === 0 ? cores.linhaTabela : cores.cardBackground
                                         
                                         RowLayout {
                                             anchors.fill: parent
@@ -1017,7 +1073,7 @@ Window {
                                                 Layout.preferredWidth: 800
                                                 text: modelData ? modelData.tipo : ""
                                                 font.pixelSize: 16
-                                                color: "#232946"
+                                                color: cores.textoPrimario
                                                 elide: Text.ElideRight
                                                 horizontalAlignment: Text.AlignLeft
                                                 verticalAlignment: Text.AlignVCenter
@@ -1030,87 +1086,82 @@ Window {
                                                 spacing: 8
                                                 
                                                 Rectangle {
-                                                    Layout.preferredWidth: 40
-                                                    Layout.preferredHeight: 35
-                                                    radius: 8
-                                                    color: "#e3f2fd"
-                                                    border.color: "#3cb3e6"
-                                                    border.width: 1
-                                                    
+                                                    width: 30
+                                                    height: 30
+                                                    radius: 6
+                                                    color: cores.acento
+    
                                                     MouseArea {
                                                         anchors.fill: parent
                                                         cursorShape: Qt.PointingHandCursor
                                                         onClicked: {
                                                             if (backend) {
-                                                                let currentValue = modelData ? modelData.peso : 1.0
-                                                                let newValue = Math.max(1.0, currentValue - 1.0)
-                                                                backend.atualizarPeso(index, newValue)
+                                                                backend.decrementar_peso(index)
                                                             }
                                                         }
                                                     }
-                                                    
+    
                                                     Text {
-                                                        text: "-"
                                                         anchors.centerIn: parent
-                                                        font.pixelSize: 20
+                                                        text: "-"
+                                                        color: "#fff"
                                                         font.bold: true
-                                                        color: "#3cb3e6"
+                                                        font.pixelSize: 18
                                                     }
                                                 }
                                                 
                                                 Rectangle {
-                                                    Layout.preferredWidth: 80
-                                                    Layout.preferredHeight: 35
-                                                    color: "#ffffff"
-                                                    border.color: "#3cb3e6"
-                                                    border.width: 1
+                                                    width: 60
+                                                    height: 30
                                                     radius: 6
-                                                    
+                                                    color: cores.fundoInput
+                                                    border.color: cores.bordaInput
+                                                    border.width: 1
+    
                                                     TextInput {
-                                                        anchors.fill: parent
-                                                        anchors.margins: 8
-                                                        text: modelData ? Number(modelData.peso).toFixed(0) : "1"
-                                                        font.pixelSize: 16
-                                                        color: "#232946"
+                                                        anchors.centerIn: parent
+                                                        text: modelData ? modelData.peso.toFixed(1) : "1.0"
+                                                        font.pixelSize: 14
+                                                        font.bold: true
+                                                        color: cores.textoInput
                                                         horizontalAlignment: TextInput.AlignHCenter
-                                                        verticalAlignment: TextInput.AlignVCenter
                                                         selectByMouse: true
+                                                        validator: DoubleValidator {
+                                                            bottom: 0.1
+                                                            top: 10.0
+                                                            decimals: 1
+                                                        }
                                                         
                                                         onEditingFinished: {
                                                             if (backend) {
-                                                                let value = Math.max(1, Math.min(100, parseInt(text) || 1))
-                                                                backend.atualizarPeso(index, value)
+                                                                backend.validar_peso_input(index, text)
                                                             }
                                                         }
                                                     }
                                                 }
                                                 
                                                 Rectangle {
-                                                    Layout.preferredWidth: 40
-                                                    Layout.preferredHeight: 35
-                                                    radius: 8
-                                                    color: "#e3f2fd"
-                                                    border.color: "#3cb3e6"
-                                                    border.width: 1
-                                                    
+                                                    width: 30
+                                                    height: 30
+                                                    radius: 6
+                                                    color: cores.acento
+    
                                                     MouseArea {
                                                         anchors.fill: parent
                                                         cursorShape: Qt.PointingHandCursor
                                                         onClicked: {
                                                             if (backend) {
-                                                                let currentValue = modelData ? modelData.peso : 1.0
-                                                                let newValue = Math.min(10.0, currentValue + 1.0)
-                                                                backend.atualizarPeso(index, newValue)
+                                                                backend.incrementar_peso(index)
                                                             }
                                                         }
                                                     }
-                                                    
+    
                                                     Text {
-                                                        text: "+"
                                                         anchors.centerIn: parent
-                                                        font.pixelSize: 18
+                                                        text: "+"
+                                                        color: "#fff"
                                                         font.bold: true
-                                                        color: "#3cb3e6"
+                                                        font.pixelSize: 18
                                                     }
                                                 }
                                             }
@@ -1120,7 +1171,7 @@ Window {
                                             anchors.bottom: parent.bottom
                                             width: parent.width
                                             height: 1
-                                            color: "#e0e0e0"
+                                            color: cores.bordaInput
                                             visible: index < (backend && backend.pesosModel ? backend.pesosModel.length - 1 : 0)
                                         }
                                     }
@@ -1132,7 +1183,7 @@ Window {
                                 policy: ScrollBar.AlwaysOn
                                 contentItem: Rectangle {
                                     radius: 6
-                                    color: "#3cb3e6"
+                                    color: cores.acento
                                 }
                             }
                         }
@@ -1148,8 +1199,8 @@ Window {
                         height: 48
                         radius: 14
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
+                            GradientStop { position: 0.0; color: cores.acento }
+                            GradientStop { position: 1.0; color: cores.textoTitulo }
                         }
                 
                         MouseArea {
@@ -1186,8 +1237,8 @@ Window {
                         height: 48
                         radius: 14
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
+                            GradientStop { position: 0.0; color: cores.acento }
+                            GradientStop { position: 1.0; color: cores.textoTitulo }
                         }
                 
                         MouseArea {
@@ -1223,8 +1274,8 @@ Window {
                         height: 48
                         radius: 14
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
+                            GradientStop { position: 0.0; color: cores.acento }
+                            GradientStop { position: 1.0; color: cores.textoTitulo }
                         }
                         
                         MouseArea {
@@ -1232,7 +1283,7 @@ Window {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: restoreConfirmation.open()
                         }
-
+    
                         RowLayout {
                             anchors.centerIn: parent
                             spacing: 8
@@ -1264,8 +1315,8 @@ Window {
             Layout.fillWidth: true
             Layout.fillHeight: true
     
-            property bool sortAscending: backend.sortAscending
-            property string sortColumn: backend.sortColumn
+            property bool sortAscending: backend ? backend.sortAscending : true
+            property string sortColumn: backend ? backend.sortColumn : "usuario"
             property string filtroUsuario: ""
             
             Component.onCompleted: {
@@ -1303,7 +1354,7 @@ Window {
                     text: "Comparação de Produtividade por Dia da Semana"
                     font.pixelSize: 28
                     font.bold: true
-                    color: "#3cb3e6"
+                    color: cores.acento
                     horizontalAlignment: Text.AlignHCenter
                     Layout.alignment: Qt.AlignHCenter
                     Layout.topMargin: 0
@@ -1315,10 +1366,10 @@ Window {
                     Layout.preferredHeight: 60
                     Layout.preferredWidth: Math.min(parent.width - 40, 1200)
                     Layout.alignment: Qt.AlignHCenter
-                    color: "#f5faff"
+                    color: cores.cardBackground
                     radius: 12
                     border.width: 1
-                    border.color: "#3cb3e6"
+                    border.color: cores.bordaCard
                     
                     RowLayout {
                         anchors.fill: parent
@@ -1328,17 +1379,17 @@ Window {
                         Text {
                             text: "Filtrar por usuário:"
                             font.pixelSize: 15
-                            color: "#1976d2"
+                            color: cores.textoTitulo
                             font.bold: true
                         }
                         
                         Rectangle {
                             Layout.preferredWidth: 250
                             Layout.preferredHeight: 36
-                            color: "#ffffff"
+                            color: cores.fundoInput
                             radius: 6
                             border.width: 1
-                            border.color: "#3cb3e6"
+                            border.color: cores.bordaCard
                             
                             TextInput {
                                 id: filtroInput
@@ -1346,7 +1397,7 @@ Window {
                                 anchors.margins: 8
                                 verticalAlignment: TextInput.AlignVCenter
                                 font.pixelSize: 14
-                                color: "#232946"
+                                color: cores.textoInput
                                 selectByMouse: true
                                 
                                 onTextChanged: {
@@ -1357,7 +1408,7 @@ Window {
                                     anchors.fill: parent
                                     text: "Digite para filtrar..."
                                     font.pixelSize: 14
-                                    color: "#aaaaaa"
+                                    color: cores.textoSecundario
                                     visible: !parent.text
                                     verticalAlignment: Text.AlignVCenter
                                 }
@@ -1371,8 +1422,8 @@ Window {
                             Layout.preferredHeight: 36
                             radius: 8
                             gradient: Gradient {
-                                GradientStop { position: 0.0; color: "#3cb3e6" }
-                                GradientStop { position: 1.0; color: "#1976d2" }
+                                GradientStop { position: 0.0; color: cores.acento }
+                                GradientStop { position: 1.0; color: cores.textoTitulo }
                             }
                             
                             property bool hovered: false
@@ -1411,27 +1462,27 @@ Window {
                         }
                     }
                 }
-            
+                
                 Rectangle {
                     id: mainContainer
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.maximumHeight: parent.height - 250
-                    Layout.topMargin: -50
-                    color: "#fff"
-                    border.color: "#3cb3e6"
+                    Layout.maximumHeight: parent.height - 300
+                    Layout.topMargin: -2
+                    color: cores.cardBackground
+                    border.color: cores.bordaCard
                     border.width: 2
                     radius: 16
                     clip: true
                     Layout.preferredWidth: Math.min(parent.width - 40, 1200)
                     Layout.alignment: Qt.AlignHCenter
-                
+                                
                     Text {
                         anchors.centerIn: parent
                         visible: !(backend && backend.tabelaSemana && backend.tabelaSemana.length > 0)
                         text: "Nenhum dado disponível para os meses selecionados."
                         font.pixelSize: 18
-                        color: "#3cb3e6"
+                        color: cores.acento
                         font.bold: true
                     }
                 
@@ -1439,7 +1490,7 @@ Window {
                         anchors.fill: parent
                         anchors.margins: 2
                         color: "transparent"
-                        border.color: "#3cb3e6"
+                        border.color: cores.bordaCard
                         border.width: 2
                         radius: 14
                         visible: backend && backend.tabelaSemana && backend.tabelaSemana.length > 0
@@ -1454,86 +1505,42 @@ Window {
                                 id: headerRect
                                 width: parent.width
                                 height: 50
-                                color: "#e3f2fd"
+                                color: cores.headerTabela
                                 radius: 0
                                 border.width: 0
                                 z: 10
-                        
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                height: parent.radius
-                                color: parent.color
-                            }
-                        
-                            Row {
-                                anchors.fill: parent
                             
                                 Rectangle {
-                                    width: 220
-                                    height: parent.height
-                                    color: "transparent"
-                            
-                                    RowLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 5
-                                    
-                                        Text {
-                                            text: "Usuário"
-                                            font.pixelSize: 18
-                                            font.bold: true
-                                            color: "#1976d2"
-                                        }
-                                        
-                                        Text {
-                                            text: backend.sortColumn === "usuario" ? (backend.sortAscending ? "▲" : "▼") : ""
-                                            font.pixelSize: 14
-                                            color: "#3cb3e6"
-                                            font.bold: true
-                                        }
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: backend.atualizar_sort_table("usuario")
-                                    }
+                                    anchors.bottom: parent.bottom
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    height: parent.radius
+                                    color: parent.color
                                 }
-                        
-                                Repeater {
-                                    model: [
-                                        {name: "Segunda", key: "segunda"},
-                                        {name: "Terça", key: "terca"},
-                                        {name: "Quarta", key: "quarta"},
-                                        {name: "Quinta", key: "quinta"},
-                                        {name: "Sexta", key: "sexta"},
-                                        {name: "Sábado", key: "sabado"},
-                                        {name: "Domingo", key: "domingo"}
-                                    ]
-                        
+                            
+                                Row {
+                                    anchors.fill: parent
+                                
                                     Rectangle {
-                                        width: (headerRect.width - 220 - 120) / 7
+                                        width: 220
                                         height: parent.height
                                         color: "transparent"
-                                        border.width: 1
-                                        border.color: "#3cb3e6"
-                                        
+                                
                                         RowLayout {
                                             anchors.centerIn: parent
                                             spacing: 5
-                                    
+                                        
                                             Text {
-                                                text: modelData.name
-                                                font.pixelSize: 16
+                                                text: "Usuário"
+                                                font.pixelSize: 18
                                                 font.bold: true
-                                                color: "#1976d2"
+                                                color: cores.textoTitulo
                                             }
                                             
                                             Text {
-                                                text: backend.sortColumn === modelData.key ? (backend.sortAscending ? "▲" : "▼") : ""
+                                                text: (backend && backend.sortColumn === "usuario") ? (backend.sortAscending ? "▲" : "▼") : ""
                                                 font.pixelSize: 14
-                                                color: "#3cb3e6"
+                                                color: cores.acento
                                                 font.bold: true
                                             }
                                         }
@@ -1541,279 +1548,333 @@ Window {
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: backend.atualizar_sort_table(modelData.key)
-                                        }
-                                    }
-                                }
-                                
-                                Rectangle {
-                                    width: 120
-                                    height: parent.height
-                                    color: "transparent"
-                                    
-                                    RowLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 5
-                                        
-                                        Text {
-                                            text: "Total"
-                                            font.pixelSize: 16
-                                            font.bold: true
-                                            color: "#1976d2"
-                                        }
-                                        
-                                        Text {
-                                            text: backend.sortColumn === "Total" ? (backend.sortAscending ? "▲" : "▼") : ""
-                                            font.pixelSize: 14
-                                            color: "#3cb3e6"
-                                            font.bold: true
-                                        }
-                                    }
-                                    
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: backend.atualizar_sort_table("Total")
-                                    }
-                                }
-                            }
-            
-                            Rectangle {
-                                anchors.bottom: parent.bottom
-                                width: parent.width
-                                height: 2
-                                color: "#3cb3e6"
-                            }
-                        }
-            
-                        Flickable {
-                            id: tableScrollView
-                            width: parent.width
-                            height: parent.height - headerRect.height
-                            contentHeight: tableContent.height
-                            clip: true
-                            
-                            Column {
-                                id: tableContent
-                                width: tableScrollView.width
-                                spacing: 0
-                            
-                                Component.onCompleted: {
-                                    console.log("Dados carregados")
-                                }
-                            
-                                Repeater {
-                                    model: backend && backend.tabelaSemana ? backend.tabelaSemana : []
-                                    
-                                    Rectangle {
-                                        id: userRowItem
-                                        width: tableContent.width
-                                        height: 40
-                                        color: index % 2 === 0 ? "#f5faff" : "#ffffff"
-                                        border.width: 0
-                                        
-                                        property var itemData: modelData
-                                        property real rowTotal: backend.calculate_row_total(itemData)
-                                    
-                                        Row {
-                                            anchors.fill: parent
-                                    
-                                            Rectangle {
-                                                width: 220
-                                                height: parent.height
-                                                color: "transparent"
-                                                
-                                                Text {
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    anchors.left: parent.left
-                                                    anchors.leftMargin: 16
-                                                    text: itemData ? itemData.usuario : ""
-                                                    font.pixelSize: 15
-                                                    font.bold: true
-                                                    color: "#232946"
-                                                    elide: Text.ElideRight
-                                                    width: 200
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.atualizar_sort_table("usuario")
                                                 }
                                             }
+                                        }
+                                    }
                             
-                                            Repeater {
-                                                model: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+                                    Repeater {
+                                        model: [
+                                            {name: "Segunda", key: "segunda"},
+                                            {name: "Terça", key: "terca"},
+                                            {name: "Quarta", key: "quarta"},
+                                            {name: "Quinta", key: "quinta"},
+                                            {name: "Sexta", key: "sexta"},
+                                            {name: "Sábado", key: "sabado"},
+                                            {name: "Domingo", key: "domingo"}
+                                        ]
+                            
+                                        Rectangle {
+                                            width: (headerRect.width - 220 - 120) / 7
+                                            height: parent.height
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: cores.bordaCard
+                                            
+                                            RowLayout {
+                                                anchors.centerIn: parent
+                                                spacing: 5
+                                        
+                                                Text {
+                                                    text: modelData.name
+                                                    font.pixelSize: 16
+                                                    font.bold: true
+                                                    color: cores.textoTitulo
+                                                }
                                                 
-                                                Rectangle {
-                                                    width: (userRowItem.width - 220 - 120) / 7
-                                                    height: 40
-                                                    color: "transparent"
-                                                    border.width: 1
-                                                    border.color: "#e3f2fd"
-                                                    
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: backend.get_day_value_formatted(userRowItem.itemData, modelData)
-                                                        font.pixelSize: 15
-                                                        color: "#232946"
-                                                        font.bold: backend.get_day_value(userRowItem.itemData, modelData) > 50
+                                                Text {
+                                                    text: (backend && backend.sortColumn === modelData.key) ? (backend.sortAscending ? "▲" : "▼") : ""
+                                                    font.pixelSize: 14
+                                                    color: cores.acento
+                                                    font.bold: true
+                                                }
+                                            }
+                                            
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    if (backend) {
+                                                        backend.atualizar_sort_table(modelData.key)
                                                     }
                                                 }
                                             }
-                            
-                                            Rectangle {
-                                                width: 120
-                                                height: 40
-                                                color: "transparent"
-                                                
-                                                Text {
-                                                    anchors.centerIn: parent
-                                                    text: backend.get_row_total_formatted(userRowItem.itemData)
-                                                    font.pixelSize: 15
-                                                    font.bold: backend.get_row_total(userRowItem.itemData) > 200
-                                                    color: "#232946"
+                                        }
+                                    }
+                                    
+                                    Rectangle {
+                                        width: 120
+                                        height: parent.height
+                                        color: "transparent"
+                                        
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 5
+                                            
+                                            Text {
+                                                text: "Total"
+                                                font.pixelSize: 16
+                                                font.bold: true
+                                                color: cores.textoTitulo
+                                            }
+                                            
+                                            Text {
+                                                text: (backend && backend.sortColumn === "Total") ? (backend.sortAscending ? "▲" : "▼") : ""
+                                                font.pixelSize: 14
+                                                color: cores.acento
+                                                font.bold: true
+                                            }
+                                        }
+                                        
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.atualizar_sort_table("Total")
                                                 }
                                             }
                                         }
                                     }
                                 }
+            
+                                Rectangle {
+                                    anchors.bottom: parent.bottom
+                                    width: parent.width
+                                    height: 2
+                                    color: cores.bordaCard
+                                }
                             }
-                        
-                            ScrollBar.vertical: ScrollBar {
-                                width: 12
-                                policy: ScrollBar.AlwaysOn
-                                contentItem: Rectangle {
-                                    radius: 6
-                                    color: "#3cb3e6"
+            
+                            Flickable {
+                                id: tableScrollView
+                                width: parent.width
+                                height: parent.height - headerRect.height
+                                contentHeight: tableContent.height
+                                clip: true
+                                
+                                Column {
+                                    id: tableContent
+                                    width: tableScrollView.width
+                                    spacing: 0
+                                
+                                    Component.onCompleted: {
+                                        console.log("Dados carregados")
+                                    }
+                                
+                                    Repeater {
+                                        model: backend && backend.tabelaSemana ? backend.tabelaSemana : []
+                                        
+                                        Rectangle {
+                                            id: userRowItem
+                                            width: tableContent.width
+                                            height: 40
+                                            color: index % 2 === 0 ? cores.linhaTabela : cores.cardBackground
+                                            border.width: 0
+                                            
+                                            property var itemData: modelData
+                                            property real rowTotal: backend.calculate_row_total(itemData)
+                                        
+                                            Row {
+                                                anchors.fill: parent
+                                        
+                                                Rectangle {
+                                                    width: 220
+                                                    height: parent.height
+                                                    color: "transparent"
+                                                    
+                                                    Text {
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        anchors.left: parent.left
+                                                        anchors.leftMargin: 16
+                                                        text: itemData ? itemData.usuario : ""
+                                                        font.pixelSize: 15
+                                                        font.bold: true
+                                                        color: cores.textoPrimario
+                                                        elide: Text.ElideRight
+                                                        width: 200
+                                                    }
+                                                }
+                                
+                                                Repeater {
+                                                    model: ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+                                                    
+                                                    Rectangle {
+                                                        width: (userRowItem.width - 220 - 120) / 7
+                                                        height: 40
+                                                        color: "transparent"
+                                                        border.width: 1
+                                                        border.color: cores.bordaInput
+                                                        
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: backend.get_day_value_formatted(userRowItem.itemData, modelData)
+                                                            font.pixelSize: 15
+                                                            color: cores.textoPrimario
+                                                            font.bold: backend.get_day_value(userRowItem.itemData, modelData) > 50
+                                                        }
+                                                    }
+                                                }
+                                
+                                                Rectangle {
+                                                    width: 120
+                                                    height: 40
+                                                    color: "transparent"
+                                                    
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: backend.get_row_total_formatted(userRowItem.itemData)
+                                                        font.pixelSize: 15
+                                                        font.bold: backend.get_row_total(userRowItem.itemData) > 200
+                                                        color: cores.textoPrimario
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            
+                                ScrollBar.vertical: ScrollBar {
+                                    width: 12
+                                    policy: ScrollBar.AlwaysOn
+                                    contentItem: Rectangle {
+                                        radius: 6
+                                        color: cores.acento
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-        }
             
-            Rectangle {
-                id: bottomPanel
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.margins: 5
-                height: 100
-                color: "transparent"
+                Rectangle {
+                    id: bottomPanel
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 80
+                    Layout.topMargin: 10
+                    color: "transparent"
             
-                RowLayout {
-                    anchors.fill: parent
-                    spacing: 20
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 20
             
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 80
-                        radius: 12
-                        color: "#f5faff"
-                        border.color: "#3cb3e6"
-                        border.width: 1
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 80
+                            radius: 12
+                            color: cores.cardBackground
+                            border.color: cores.bordaCard
+                            border.width: 1
             
-                        Text {
-                            id: rankingTitle
-                            text: "Produtividade geral por dia da semana"
-                            font.pixelSize: 14
-                            font.bold: true
-                            color: "#3cb3e6"
-                            anchors {
-                                top: parent.top
-                                topMargin: 8
-                                horizontalCenter: parent.horizontalCenter
+                            Text {
+                                id: rankingTitle
+                                text: "Produtividade geral por dia da semana"
+                                font.pixelSize: 14
+                                font.bold: true
+                                color: cores.acento
+                                anchors {
+                                    top: parent.top
+                                    topMargin: 2
+                                    horizontalCenter: parent.horizontalCenter
+                                }
                             }
-                        }
             
-                        ScrollView {
-                            id: rankingScroll
-                            anchors {
-                                top: rankingTitle.bottom
-                                topMargin: 4
-                                bottom: parent.bottom
-                                bottomMargin: 8
-                                left: parent.left
-                                right: parent.right
-                                leftMargin: 16
-                                rightMargin: 16
-                            }
-                            clip: true
-                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-                            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                            ScrollView {
+                                id: rankingScroll
+                                anchors {
+                                    top: rankingTitle.bottom
+                                    topMargin: 4
+                                    bottom: parent.bottom
+                                    bottomMargin: 8
+                                    left: parent.left
+                                    right: parent.right
+                                    leftMargin: 16
+                                    rightMargin: 16
+                                }
+                                clip: true
+                                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                                ScrollBar.vertical.policy: ScrollBar.AlwaysOff
             
-                            Row {
-                                id: rankingRow
-                                spacing: 16
-                                anchors.verticalCenter: parent.verticalCenter
+                                Row {
+                                    id: rankingRow
+                                    spacing: 16
+                                    anchors.verticalCenter: parent.verticalCenter
             
-                                Repeater {
-                                    model: backend ? backend.rankingData : []
+                                    Repeater {
+                                        model: backend ? backend.rankingData : []
             
-                                    Rectangle {
-                                        height: 40
-                                        width: rankItemText.width + 20
-                                        color: index < 3 ? "#e3f2fd" : "transparent"
-                                        radius: 8
-                                        border.width: 1
-                                        border.color: index < 3 ? "#3cb3e6" : "#e0e0e0"
-                                        
-                                        Text {
-                                            id: rankItemText
-                                            anchors.centerIn: parent
-                                            text: modelData.rankText
-                                            font.pixelSize: 14
-                                            color: "#232946"
-                                            font.bold: index < 3
-                                            padding: 5
+                                        Rectangle {
+                                            height: 40
+                                            width: rankItemText.width + 20
+                                            color: index < 3 ? cores.hover : "transparent"
+                                            radius: 8
+                                            border.width: 1
+                                            border.color: index < 3 ? cores.acento : cores.bordaInput
+                                            
+                                            Text {
+                                                id: rankItemText
+                                                anchors.centerIn: parent
+                                                text: modelData.rankText
+                                                font.pixelSize: 14
+                                                color: cores.textoPrimario
+                                                font.bold: index < 3
+                                                padding: 5
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
             
-                    Rectangle {
-                        Layout.preferredWidth: 180
-                        Layout.preferredHeight: 50
-                        radius: 12
-                        gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#3cb3e6" }
-                            GradientStop { position: 1.0; color: "#1976d2" }
-                        }
+                        Rectangle {
+                            Layout.preferredWidth: 180
+                            Layout.preferredHeight: 50
+                            radius: 12
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: cores.acento }
+                                GradientStop { position: 1.0; color: cores.textoTitulo }
+                            }
+                            
+                            property bool hovered: false
+                            scale: hovered ? 1.03 : 1.0
+                            Behavior on scale { NumberAnimation { duration: 120 } }
                         
-                        property bool hovered: false
-                        scale: hovered ? 1.03 : 1.0
-                        Behavior on scale { NumberAnimation { duration: 120 } }
-                    
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onEntered: parent.hovered = true
-                            onExited: parent.hovered = false
-                            onClicked: {
-                                if (backend) {
-                                    backend.gerarTabelaSemana()
-                                    backend.atualizar_ranking_model()
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onEntered: parent.hovered = true
+                                onExited: parent.hovered = false
+                                onClicked: {
+                                    if (backend) {
+                                        backend.gerarTabelaSemana()
+                                        backend.atualizar_ranking_model()
+                                    }
                                 }
                             }
-                        }
+                            
+                            RowLayout {
+                                anchors.centerIn: parent
+                                spacing: 8
                         
-                        RowLayout {
-                            anchors.centerIn: parent
-                            spacing: 8
-                    
-                            Image {
-                                source: "assets/icons/peso4.png"
-                                Layout.preferredWidth: 24
-                                Layout.preferredHeight: 24
-                                fillMode: Image.PreserveAspectFit
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-                    
-                            Text {
-                                text: "Atualizar Dados"
-                                color: "#fff"
-                                font.bold: true
-                                font.pixelSize: 15
-                                verticalAlignment: Text.AlignVCenter
+                                Image {
+                                    source: "assets/icons/peso4.png"
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
+                        
+                                Text {
+                                    text: "Atualizar Dados"
+                                    color: "#fff"
+                                    font.bold: true
+                                    font.pixelSize: 15
+                                    verticalAlignment: Text.AlignVCenter
+                                }
                             }
                         }
                     }
@@ -1821,7 +1882,6 @@ Window {
             }
         }
     }
-
 
 
     Component {
@@ -1840,7 +1900,7 @@ Window {
                     text: "Comparação de Produtividade entre Usuários"
                     font.pixelSize: 28
                     font.bold: true
-                    color: "#3cb3e6"
+                    color: cores.acento
                     horizontalAlignment: Text.AlignHCenter
                     Layout.alignment: Qt.AlignHCenter
                 }
@@ -1852,8 +1912,8 @@ Window {
                     Rectangle {
                         Layout.preferredWidth: 400
                         Layout.fillHeight: true
-                        color: "#fff"
-                        border.color: "#3cb3e6"
+                        color: cores.cardBackground
+                        border.color: cores.bordaCard
                         border.width: 2
                         radius: 16
     
@@ -1866,15 +1926,15 @@ Window {
                                 text: "Selecionar Usuários para Comparação"
                                 font.pixelSize: 18
                                 font.bold: true
-                                color: "#1976d2"
+                                color: cores.textoTitulo
                                 Layout.alignment: Qt.AlignHCenter
                             }
     
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 35
-                                color: "#f5faff"
-                                border.color: "#3cb3e6"
+                                color: cores.fundoInput
+                                border.color: cores.bordaCard
                                 border.width: 1
                                 radius: 8
     
@@ -1883,7 +1943,7 @@ Window {
                                     anchors.fill: parent
                                     anchors.margins: 8
                                     font.pixelSize: 14
-                                    color: "#232946"
+                                    color: cores.textoInput
                                     verticalAlignment: TextInput.AlignVCenter
                                     selectByMouse: true
     
@@ -1897,7 +1957,7 @@ Window {
                                         anchors.fill: parent
                                         text: "Filtrar usuários..."
                                         font.pixelSize: 14
-                                        color: "#aaaaaa"
+                                        color: cores.textoSecundario
                                         visible: !parent.text
                                         verticalAlignment: Text.AlignVCenter
                                     }
@@ -1917,8 +1977,8 @@ Window {
                                     delegate: Rectangle {
                                         width: listaUsuarios.width
                                         height: 35
-                                        color: modelData.selecionado ? "#e3f2fd" : (index % 2 === 0 ? "#f5faff" : "#ffffff")
-                                        border.color: modelData.selecionado ? "#3cb3e6" : "transparent"
+                                        color: modelData.selecionado ? cores.hover : (index % 2 === 0 ? cores.linhaTabela : cores.cardBackground)
+                                        border.color: modelData.selecionado ? cores.acento : "transparent"
                                         border.width: modelData.selecionado ? 2 : 0
                                         radius: 6
     
@@ -1941,8 +2001,8 @@ Window {
                                                 Layout.preferredWidth: 18
                                                 Layout.preferredHeight: 18
                                                 radius: 3
-                                                color: modelData.selecionado ? "#3cb3e6" : "transparent"
-                                                border.color: "#3cb3e6"
+                                                color: modelData.selecionado ? cores.acento : "transparent"
+                                                border.color: cores.acento
                                                 border.width: 2
     
                                                 Text {
@@ -1958,7 +2018,7 @@ Window {
                                             Text {
                                                 text: modelData.nome
                                                 font.pixelSize: 13
-                                                color: "#232946"
+                                                color: cores.textoPrimario
                                                 Layout.fillWidth: true
                                                 elide: Text.ElideRight
                                             }
@@ -1966,7 +2026,7 @@ Window {
                                             Text {
                                                 text: modelData.total.toFixed(1)
                                                 font.pixelSize: 12
-                                                color: "#3cb3e6"
+                                                color: cores.acento
                                                 font.bold: true
                                             }
                                         }
@@ -1977,13 +2037,13 @@ Window {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 10
-    
+                            
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 35
                                     radius: 8
-                                    color: "#3cb3e6"
-    
+                                    color: cores.acento
+                            
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
@@ -1993,7 +2053,7 @@ Window {
                                             }
                                         }
                                     }
-    
+                            
                                     Text {
                                         anchors.centerIn: parent
                                         text: "Selecionar Todos"
@@ -2002,13 +2062,13 @@ Window {
                                         font.pixelSize: 12
                                     }
                                 }
-    
+                            
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 35
                                     radius: 8
-                                    color: "#e0e0e0"
-    
+                                    color: cores.textoSecundario
+                            
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
@@ -2018,11 +2078,11 @@ Window {
                                             }
                                         }
                                     }
-    
+                            
                                     Text {
                                         anchors.centerIn: parent
                                         text: "Limpar Seleção"
-                                        color: "#232946"
+                                        color: cores.textoPrimario
                                         font.bold: true
                                         font.pixelSize: 12
                                     }
@@ -2034,8 +2094,8 @@ Window {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        color: "#fff"
-                        border.color: "#3cb3e6"
+                        color: cores.cardBackground
+                        border.color: cores.bordaCard   
                         border.width: 2
                         radius: 16
     
@@ -2048,7 +2108,7 @@ Window {
                                 text: "Gráfico de Comparação"
                                 font.pixelSize: 18
                                 font.bold: true
-                                color: "#1976d2"
+                                color: cores.textoTitulo
                                 Layout.alignment: Qt.AlignHCenter
                             }
     
@@ -2057,25 +2117,23 @@ Window {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 antialiasing: true
-                                backgroundColor: "#ffffff"
+                                backgroundColor: cores.fundoGrafico
                                 legend.visible: true
                                 legend.alignment: Qt.AlignBottom
                                 title: "Produtividade por Dia da Semana"
                                 titleFont: Qt.font({ pixelSize: 14, bold: true })
-                                titleColor: "#1976d2"
-                                plotAreaColor: "#ffffff"
-                            
-                                ValueAxis {
+                                titleColor: cores.textoTitulo
+                                plotAreaColor: cores.fundoGrafico
+                                
+                                BarCategoryAxis {
                                     id: eixoX
-                                    min: 0
-                                    max: 6
-                                    tickCount: 7
-                                    labelFormat: ""
+                                    categories: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
                                     labelsFont.pixelSize: 10
-                                    labelsColor: "#232946"
-                                    gridLineColor: "#e0e0e0"
+                                    labelsColor: cores.textoPrimario
+                                    gridLineColor: cores.bordaInput
+                                    labelsAngle: -45
                                 }
-                            
+                                
                                 ValueAxis {
                                     id: eixoY
                                     min: 0
@@ -2083,42 +2141,81 @@ Window {
                                     tickCount: 6
                                     labelFormat: "%d"
                                     labelsFont.pixelSize: 10
-                                    labelsColor: "#232946"
-                                    gridLineColor: "#e0e0e0"
+                                    labelsColor: cores.textoPrimario
+                                    gridLineColor: cores.bordaInput
                                 }
                             
-                                function atualizarGraficoComparacao() {
-                                    graficoComparacao.removeAllSeries()
-                                    
-                                    if (!backend || !backend.dadosComparacao) return
+                                property var activeSeries: []
                             
-                                    var cores = ["#3cb3e6", "#4caf50", "#ff9800", "#f44336", "#9c27b0", "#607d8b"]
+                                function limparGrafico() {
+                                    console.log("Limpando gráfico...")
+                                    for (var i = 0; i < activeSeries.length; i++) {
+                                        graficoComparacao.removeSeries(activeSeries[i])
+                                    }
+                                    activeSeries = []
+                                }
+                            
+                                function atualizarGrafico() {
+                                    console.log("=== ATUALIZANDO GRÁFICO DE COMPARAÇÃO ===")
+                                    
+                                    limparGrafico()
+                                    
+                                    if (!backend || !backend.dadosComparacao || backend.dadosComparacao.length === 0) {
+                                        console.log("Nenhum dado de comparação disponível")
+                                        return
+                                    }
+                                
+                                    var cores = ["#3cb3e6", "#4caf50", "#ff9800", "#f44336", "#9c27b0", "#607d8b", "#795548", "#e91e63"]
+                                    
+                                    eixoY.max = backend.maxComparacaoValue
                                     
                                     for (var i = 0; i < backend.dadosComparacao.length; i++) {
                                         var userData = backend.dadosComparacao[i]
+                                        console.log("Criando série para:", userData.nome, "com valores:", userData.valores)
+                                        
                                         var series = graficoComparacao.createSeries(ChartView.SeriesTypeLine, userData.nome, eixoX, eixoY)
                                         
-                                        series.color = cores[i % cores.length]
-                                        series.width = 3
-                                        series.pointsVisible = true
-                                        series.pointLabelsVisible = true
-                                        series.pointLabelsFormat = "@yPoint"
-                                        series.pointLabelsFont.pixelSize = 10
-                                        
-                                        for (var j = 0; j < userData.valores.length; j++) {
-                                            series.append(j, userData.valores[j])
+                                        if (series) {
+                                            series.color = cores[i % cores.length]
+                                            series.width = 3
+                                            series.pointsVisible = true
+                                            series.pointLabelsVisible = false
+                                            
+                                            for (var j = 0; j < userData.valores.length && j < 7; j++) {
+                                                var valor = userData.valores[j] || 0
+                                                series.append(j, valor)
+                                            }
+                                            
+                                            activeSeries.push(series)
+                                            console.log("Série criada com sucesso:", userData.nome)
+                                        } else {
+                                            console.log("Erro ao criar série para:", userData.nome)
                                         }
                                     }
+                                    
+                                    console.log("Total de séries ativas:", activeSeries.length)
                                 }
-                            
+                                
                                 Connections {
                                     target: backend
                                     function onComparacaoDataChanged() {
-                                        atualizarGraficoComparacao()
+                                        console.log("Sinal comparacaoDataChanged recebido")
+                                        Qt.callLater(function() {
+                                            graficoComparacao.atualizarGrafico()
+                                        })
+                                    }
+                                    function onMaxComparacaoValueChanged() {
+                                        console.log("Max value changed:", backend.maxComparacaoValue)
+                                        eixoY.max = backend.maxComparacaoValue
+                                    }
+                                    function onUsuariosComparacaoChanged() {
+                                        console.log("Lista de usuários mudou")
+                                        listaUsuarios.model = backend.usuariosComparacao
                                     }
                                 }
-                            
+                                
                                 Component.onCompleted: {
+                                    console.log("ChartView inicializado")
                                     if (backend) {
                                         backend.gerarDadosComparacao()
                                     }
@@ -2128,7 +2225,7 @@ Window {
                                     anchors.centerIn: parent
                                     visible: !backend || !backend.dadosComparacao || backend.dadosComparacao.length === 0
                                     text: "Selecione usuários para comparar"
-                                    color: "#3cb3e6"
+                                    color: cores.acento
                                     font.pixelSize: 16
                                     font.bold: true
                                 }
@@ -2140,16 +2237,710 @@ Window {
         }
     }
 
-
     Component {
         id: configPage
+    
         Rectangle {
-            color: "white"
-            Text {
-                text: "Página de Configurações"
+            color: "transparent"
+            anchors.fill: parent
+    
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 30
+    
+                Text {
+                    text: "Configurações do Sistema"
+                    font.pixelSize: 28
+                    font.bold: true
+                    color: cores.acento
+                    horizontalAlignment: Text.AlignHCenter
+                    Layout.alignment: Qt.AlignHCenter
+                }
+    
+                ScrollView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+    
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 25
+    
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 200
+                            color: cores.cardBackground
+                            border.color: cores.bordaCard
+                            border.width: 2
+                            radius: 16
+                        
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 15
+                        
+                                Text {
+                                    text: "Informações do Sistema"
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: cores.textoTitulo
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                        
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    rowSpacing: 12
+                                    columnSpacing: 30
+                        
+                                    Text {
+                                        text: "Versão do Aplicativo:"
+                                        font.pixelSize: 14
+                                        color: cores.textoPrimario
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        text: backend ? backend.versaoApp : "1.0.0"
+                                        font.pixelSize: 14
+                                        color: cores.acento
+                                        font.bold: true
+                                    }
+                        
+                                    Text {
+                                        text: "Data de Compilação:"
+                                        font.pixelSize: 14
+                                        color: cores.textoPrimario
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        text: backend ? backend.dataCompilacao : "Junho 2025"
+                                        font.pixelSize: 14
+                                        color: cores.acento
+                                        font.bold: true
+                                    }
+                        
+                                    Text {
+                                        text: "Sistema Operacional:"
+                                        font.pixelSize: 14
+                                        color: cores.textoPrimario
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        text: backend ? backend.statusSistema : "Windows"
+                                        font.pixelSize: 14
+                                        color: cores.acento
+                                        font.bold: true
+                                    }
+                                    
+                                    Text {
+                                        text: "Arquivos de Dados:"
+                                        font.pixelSize: 14
+                                        color: cores.textoPrimario
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        text: backend ? backend.totalArquivosDados + " arquivos" : "0 arquivos"
+                                        font.pixelSize: 14
+                                        color: cores.acento
+                                        font.bold: true
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 160
+                            color: cores.cardBackground
+                            border.color: cores.bordaCard
+                            border.width: 2
+                            radius: 16
+                        
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 12
+                        
+                                Text {
+                                    text: "Personalização"
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: cores.textoTitulo
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                        
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignHCenter
+                                    spacing: 15
+                        
+                                    Text {
+                                        text: "Tema do Sistema:"
+                                        font.pixelSize: 15
+                                        color: cores.textoPrimario
+                                        font.bold: true
+                                    }
+                        
+                                    Rectangle {
+                                        Layout.preferredWidth: 180
+                                        Layout.preferredHeight: 45
+                                        radius: 10
+                                        color: temaEscuro ? cores.acento : cores.hover
+                                        border.color: cores.bordaCard
+                                        border.width: 2
+                        
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.toggleTema()
+                                                }
+                                            }
+                                        }
+                        
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 10
+                        
+                                            Text {
+                                                text: temaEscuro ? "🌙" : "☀️"
+                                                font.pixelSize: 16
+                                            }
+                        
+                                            Text {
+                                                text: temaEscuro ? "Modo Escuro" : "Modo Claro"
+                                                color: temaEscuro ? "#ffffff" : cores.textoPrimario
+                                                font.bold: true
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+                                }
+                        
+                                Text {
+                                    text: "Clique para alternar entre os modos claro e escuro"
+                                    font.pixelSize: 11
+                                    color: cores.textoSecundario
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+                            }
+                        }
+    
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 180
+                            color: cores.cardBackground
+                            border.color: cores.bordaCard
+                            border.width: 2
+                            radius: 16
+    
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 15
+    
+                                Text {
+                                    text: "Gerenciar Pastas"
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: cores.textoTitulo
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+    
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    columns: 2
+                                    rowSpacing: 12
+                                    columnSpacing: 15
+    
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 40
+                                        radius: 8
+                                        color: cores.acento
+                                        border.color: cores.bordaCard
+                                        border.width: 1
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.abrirPastaApp()
+                                                }
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+    
+                                            Image {
+                                                source: "assets/icons/dashboard.png"
+                                                Layout.preferredWidth: 16
+                                                Layout.preferredHeight: 16
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+    
+                                            Text {
+                                                text: "Pasta do Aplicativo"
+                                                color: "#ffffff"
+                                                font.bold: true
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+    
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 40
+                                        radius: 8
+                                        color: cores.acento
+                                        border.color: cores.bordaCard
+                                        border.width: 1
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.abrirPastaDados()
+                                                }
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+    
+                                            Image {
+                                                source: "assets/icons/excel.png"
+                                                Layout.preferredWidth: 16
+                                                Layout.preferredHeight: 16
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+    
+                                            Text {
+                                                text: "Dados Mensais"
+                                                color: "#ffffff"
+                                                font.bold: true
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+    
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 40
+                                        radius: 8
+                                        color: cores.acento
+                                        border.color: cores.bordaCard
+                                        border.width: 1
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.abrirPastaSalvos()
+                                                }
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+    
+                                            Image {
+                                                source: "assets/icons/peso.png"
+                                                Layout.preferredWidth: 16
+                                                Layout.preferredHeight: 16
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+    
+                                            Text {
+                                                text: "Configurações"
+                                                color: "#ffffff"
+                                                font.bold: true
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+    
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 40
+                                        radius: 8
+                                        color: cores.acento
+                                        border.color: cores.bordaCard
+                                        border.width: 1
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (backend) {
+                                                    backend.abrirPastaExports()
+                                                }
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+    
+                                            Image {
+                                                source: "assets/icons/settings.png"
+                                                Layout.preferredWidth: 16
+                                                Layout.preferredHeight: 16
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+    
+                                            Text {
+                                                text: "Pasta de Exports"
+                                                color: "#ffffff"
+                                                font.bold: true
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 160
+                            color: cores.cardBackground
+                            border.color: cores.bordaCard
+                            border.width: 2
+                            radius: 16
+    
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 15
+    
+                                Text {
+                                    text: "Manutenção do Sistema"
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: cores.textoTitulo
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+    
+                                Text {
+                                    text: "Cache atual: " + (backend ? backend.tamanhoCache : "0 itens")
+                                    font.pixelSize: 13
+                                    color: cores.textoSecundario
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+    
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 15
+    
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 45
+                                        radius: 8
+                                        color: cores.textoSecundario
+                                        border.color: cores.bordaCard
+                                        border.width: 1
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                limparCachePopup.open()
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+    
+                                            Image {
+                                                source: "assets/icons/peso4.png"
+                                                Layout.preferredWidth: 18
+                                                Layout.preferredHeight: 18
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+    
+                                            Text {
+                                                text: "Limpar Cache"
+                                                color: cores.textoPrimario
+                                                font.bold: true
+                                                font.pixelSize: 14
+                                            }
+                                        }
+                                    }
+    
+                                    Rectangle {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 45
+                                        radius: 8
+                                        color: cores.textoSecundario
+                                        border.color: cores.bordaCard
+                                        border.width: 1
+    
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                resetConfigPopup.open()
+                                            }
+                                        }
+    
+                                        RowLayout {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+    
+                                            Image {
+                                                source: "assets/icons/settings.png"
+                                                Layout.preferredWidth: 18
+                                                Layout.preferredHeight: 18
+                                                fillMode: Image.PreserveAspectFit
+                                            }
+    
+                                            Text {
+                                                text: "Resetar Configurações"
+                                                color: cores.textoPrimario
+                                                font.bold: true
+                                                font.pixelSize: 14
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 120
+                            color: cores.cardBackground
+                            border.color: cores.bordaCard
+                            border.width: 2
+                            radius: 16
+    
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 10
+    
+                                Text {
+                                    text: "Sobre o Projeto"
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: cores.textoTitulo
+                                    Layout.alignment: Qt.AlignHCenter
+                                }
+    
+                                Text {
+                                    text: "Sistema de Análise de Produtividade APROD\nDesenvolvido para gerenciar e analisar dados de produtividade com ferramentas avançadas de visualização e relatórios."
+                                    font.pixelSize: 14
+                                    color: cores.textoPrimario
+                                    horizontalAlignment: Text.AlignHCenter
+                                    Layout.alignment: Qt.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    
+            Popup {
+                id: limparCachePopup
+                width: 400
+                height: 160
+                modal: true
+                focus: true
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                 anchors.centerIn: parent
-                font.pixelSize: 24
-                color: "black"
+    
+                Rectangle {
+                    anchors.fill: parent
+                    color: cores.fundoPopup
+                    radius: 12
+                    border.color: cores.bordaCard
+                    border.width: 2
+    
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 20
+    
+                        Text {
+                            text: "Deseja limpar o cache do sistema?"
+                            font.pixelSize: 16
+                            color: cores.textoPrimario
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            font.bold: true
+                        }
+    
+                        Text {
+                            text: "Isso irá remover todos os dados temporários carregados."
+                            font.pixelSize: 12
+                            color: cores.textoSecundario
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+    
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 20
+    
+                            Rectangle {
+                                width: 100
+                                height: 40
+                                radius: 8
+                                color: cores.acento
+    
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        limparCachePopup.close()
+                                        if (backend) {
+                                            backend.limparDadosCache()
+                                        }
+                                    }
+                                }
+    
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Sim"
+                                    color: "#fff"
+                                    font.bold: true
+                                    font.pixelSize: 14
+                                }
+                            }
+    
+                            Rectangle {
+                                width: 100
+                                height: 40
+                                radius: 8
+                                color: cores.textoSecundario
+    
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: limparCachePopup.close()
+                                }
+    
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Cancelar"
+                                    color: cores.textoPrimario
+                                    font.bold: true
+                                    font.pixelSize: 14
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            Popup {
+                id: resetConfigPopup
+                width: 450
+                height: 180
+                modal: true
+                focus: true
+                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                anchors.centerIn: parent
+    
+                Rectangle {
+                    anchors.fill: parent
+                    color: cores.fundoPopup
+                    radius: 12
+                    border.color: cores.bordaCard
+                    border.width: 2
+    
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 20
+                        spacing: 20
+    
+                        Text {
+                            text: "⚠️ Resetar todas as configurações?"
+                            font.pixelSize: 16
+                            color: cores.textoPrimario
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            font.bold: true
+                        }
+    
+                        Text {
+                            text: "Isso irá:\n• Limpar todos os meses ativos\n• Restaurar pesos padrão\n• Remover filtros salvos\n• Resetar ordenações\n• Voltar ao tema padrão"
+                            font.pixelSize: 12
+                            color: cores.textoSecundario
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                        }
+    
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 20
+    
+                            Rectangle {
+                                width: 120
+                                height: 40
+                                radius: 8
+                                color: cores.acento
+    
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        resetConfigPopup.close()
+                                        if (backend) {
+                                            backend.resetarConfiguracoes()
+                                        }
+                                    }
+                                }
+    
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Resetar"
+                                    color: "#fff"
+                                    font.bold: true
+                                    font.pixelSize: 14
+                                }
+                            }
+    
+                            Rectangle {
+                                width: 100
+                                height: 40
+                                radius: 8
+                                color: cores.textoSecundario
+    
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: resetConfigPopup.close()
+                                }
+    
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Cancelar"
+                                    color: cores.textoPrimario
+                                    font.bold: true
+                                    font.pixelSize: 14
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
